@@ -1,0 +1,16 @@
+// A port is the list of functions a plug must provide.
+// plug() checks that list once, when the app starts.
+
+export const catalogPort = ["listProducts", "getProduct"];
+
+// Same shape the Adyen /sessions flow needs, so that adapter can
+// replace the fake one without the shop knowing.
+export const paymentsPort = ["createSession", "refund"];
+
+export function plug(name, methods, adapter) {
+  const missing = methods.filter((method) => typeof adapter?.[method] !== "function");
+  if (missing.length > 0) {
+    throw new Error(`${name} plug is missing: ${missing.join(", ")}`);
+  }
+  return adapter;
+}

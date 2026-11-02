@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CoolBikesCo</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1c1915;
+      --paper: #f6f1e8;
+      --card: #fffdf8;
+      --line: #e4d9c8;
+      --accent: #0f6e56;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Iowan Old Style", Palatino, Georgia, serif;
+      background: var(--paper);
+      color: var(--ink);
+    }
+    main { max-width: 720px; margin: 0 auto; padding: 48px 20px 80px; }
+    h1 { font-size: 2.4rem; font-weight: 600; margin: 0 0 8px; }
+    .lede { margin: 0 0 28px; font-size: 1.05rem; }
+    ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+    button.bike {
+      width: 100%;
+      text-align: left;
+      font: inherit;
+      color: inherit;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px 18px;
+      cursor: pointer;
+    }
+    button.bike[aria-pressed="true"] { border-color: var(--accent); outline: 2px solid var(--accent); }
+    .name { font-size: 1.2rem; }
+    .price { float: right; }
+    .summary { margin: 6px 0 0; color: #5c5348; }
+    .pay {
+      margin-top: 20px;
+      font: inherit;
+      background: var(--accent);
+      color: white;
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 18px;
+      cursor: pointer;
+    }
+    .pay:disabled { opacity: 0.45; cursor: not-allowed; }
+    #checkout {
+      margin-top: 28px;
+      padding: 16px 18px;
+      background: var(--card);
+      border: 1px dashed var(--line);
+      border-radius: 12px;
+    }
+    #dropin { min-height: 12px; }
+    #session-note { margin: 8px 0 0; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>CoolBikesCo</h1>
+    <p class="lede">Bicycles, sold from the Netherlands. Pick one.</p>
+    <ul id="products"></ul>
+    <button class="pay" id="pay" type="button" disabled>Continue to checkout</button>
+    <section id="checkout" hidden>
+      <div id="dropin"></div>
+      <p id="session-note"></p>
+    </section>
+  </main>
+  <script>
+    const list = document.querySelector("#products");
+    const pay = document.querySelector("#pay");
+    const checkout = document.querySelector("#checkout");
+    const note = document.querySelector("#session-note");
+    let selected = null;
+
+    const money = new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" });
+
+    function euros(price) {
+      return money.format(price.value / 100);
+    }
+
+    fetch("/api/products")
+      .then((response) => response.json())
+      .then((body) => {
+        for (const product of body.products) {
+          const item = document.createElement("li");
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "bike";
+          button.setAttribute("aria-pressed", "false");
+          button.innerHTML = `<span class="name"></span><span class="price"></span><p class="summary"></p>`;
+          button.querySelector(".name").textContent = product.name;
+          button.querySelector(".price").textContent = euros(product.price);
+          button.querySelector(".summary").textContent = product.summary;
+          button.addEventListener("click", () => {
+            selected = product.id;
+            pay.disabled = false;
+            for (const other of list.querySelectorAll("button")) {
+              other.setAttribute("aria-pressed", String(other === button));
+            }
+          });
+          item.append(button);
+          list.append(item);
+        }
+      });
+
+    pay.addEventListener("click", async () => {
+      pay.disabled = true;
+      const response = await fetch("/api/checkout-sessions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ productId: selected }),
+      });
+      const body = await response.json();
+      checkout.hidden = false;
+      note.textContent = response.ok
+        ? `Session ${body.session.id} from the ${body.session.provider} payments plug. The checkout UI socket is #dropin. Nothing is mounted there yet.`
+        : body.error;
+      pay.disabled = false;
+    });
+  </script>
+</body>
+</html>
