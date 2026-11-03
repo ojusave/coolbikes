@@ -73,3 +73,7 @@ Update: iDEAL is now enabled for NL and EUR, and the shop charges euros, so Drop
 ## 8. The refund looked stuck after Adyen had accepted it
 
 `POST /payments/{psp}/reversals` returned **201** with status `received`. The invoice stayed on "Requesting refund…" because the button's CSS (`display: inline-block`) beat the `hidden` attribute. The reversal was already done. The page just did not get out of the way.
+
+## 9. iDEAL test flow lands on Adyen's moneyapp simulator
+
+After selecting iDEAL and submitting, the shopper is redirected to Adyen's test issuer page (moneyapp) showing amount, IBAN, receiver, and "Authorize payment / Cancel payment" buttons. The button did not respond to clicks in the embedded checkout; unclear whether this is Adyen's simulator or our redirect/iframe setup. Need to retest in a top-level tab and check console errors.
