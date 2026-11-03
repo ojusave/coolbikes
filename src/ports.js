@@ -5,7 +5,11 @@ export const catalogPort = ["listProducts", "getProduct"];
 
 // Same shape the Adyen /sessions flow needs, so that adapter can
 // replace the fake one without the shop knowing.
-export const paymentsPort = ["createSession", "refund"];
+export const paymentsPort = ["createSession", "refund", "submitRedirect", "verifyWebhook"];
+
+// Remembers payments the shop has seen, so refunds and the
+// Customer Area walkthrough have a pspReference to use.
+export const ledgerPort = ["record", "list", "getByReference"];
 
 export function plug(name, methods, adapter) {
   const missing = methods.filter((method) => typeof adapter?.[method] !== "function");

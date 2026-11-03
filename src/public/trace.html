@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Operations · CoolBikesCo</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1c1915;
+      --paper: #f4f0e8;
+      --card: #fffdf8;
+      --line: #d9d0c3;
+      --accent: #0c5c48;
+      --muted: #4a433b;
+      --bad: #8c2f2f;
+      --track: #e7e1d6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Iowan Old Style", Palatino, Georgia, serif;
+      background: var(--paper);
+      color: var(--ink);
+      line-height: 1.45;
+    }
+    main { max-width: 880px; margin: 0 auto; padding: 40px 16px 72px; }
+    .tools { margin: 0 0 20px; }
+    .tools a { color: var(--muted); }
+    h1 { font-size: 2.2rem; font-weight: 600; margin: 0 0 8px; }
+    .lede { margin: 0 0 24px; }
+    #empty { color: var(--muted); }
+    .trace {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+      margin: 0 0 14px;
+    }
+    h2 {
+      font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin: 0;
+      overflow-wrap: anywhere;
+    }
+    .when { margin: 4px 0 14px; color: var(--muted); font-size: 0.9rem; }
+    ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+    li { padding-left: calc((var(--depth) - 1) * 1.1rem); }
+    .row { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+    .op {
+      font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+      font-size: 0.92rem;
+    }
+    .meta { color: var(--muted); white-space: nowrap; font-size: 0.9rem; }
+    li[data-outcome="error"] .meta { color: var(--bad); }
+    .track { position: relative; height: 6px; margin-top: 6px; background: var(--track); border-radius: 99px; }
+    .bar { position: absolute; top: 0; height: 6px; border-radius: 99px; background: var(--accent); }
+    li[data-outcome="error"] .bar { background: var(--bad); }
+    li[data-outcome="running"] .bar { width: 28%; animation: slide 1s ease-in-out infinite; }
+    .fields { margin: 6px 0 0; color: var(--muted); font-size: 0.9rem; overflow-wrap: anywhere; }
+    #live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    @keyframes slide {
+      50% { width: 70%; }
+    }
+    @media (max-width: 480px) {
+      .row { display: block; }
+      .meta { display: block; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      li[data-outcome="running"] .bar { animation: none; width: 40%; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="tools"><a href="/">Shop</a></p>
+    <h1>Operations</h1>
+    <p class="lede">What the server did for each payment. The shop itself stays a shop.</p>
+    <p id="empty">No payments yet. Pay for a bike in the shop, and the steps will show up here.</p>
+    <div id="traces"></div>
+    <p id="live" role="status"></p>
+  </main>
+  <script src="/trace.js"></script>
+</body>
+</html>

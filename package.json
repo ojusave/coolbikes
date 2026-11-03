@@ -4,6 +4,9 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test"
+    "test": "node --test src/coolbikes.test.js"
+  },
+  "dependencies": {
+    "@adyen/api-library": "^32.2.0"
   }
 }

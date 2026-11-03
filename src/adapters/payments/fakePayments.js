@@ -1,6 +1,5 @@
-// Stand-in for Adyen. Returns the same session fields Drop-in will read:
-// id, sessionData, clientKey, environment.
-// Pull this file out of src/index.js and plug in the Adyen adapter.
+// Stand-in for Adyen. Same ports as the Adyen plug so the shop
+// can run end-to-end before a test account is ready.
 
 let sequence = 0;
 
@@ -34,6 +33,33 @@ export function fakePayments() {
         paymentPspReference: request.paymentPspReference,
         amount: request.amount ?? null,
         reference: request.reference,
+      };
+    },
+    async submitRedirect() {
+      return {
+        provider: "fake",
+        resultCode: "Authorised",
+        pspReference: nextId("fake_psp"),
+      };
+    },
+    async verifyWebhook(body) {
+      const items = body?.notificationItems ?? [];
+      return {
+        provider: "fake",
+        ok: true,
+        items: items.map((item) => item.NotificationRequestItem).filter(Boolean),
+      };
+    },
+    // Demo path: the fake Drop-in calls this so the ledger gets a
+    // pspReference without talking to Adyen.
+    async completeDemo(request) {
+      return {
+        provider: "fake",
+        resultCode: "Authorised",
+        pspReference: nextId("fake_psp"),
+        reference: request.reference,
+        amount: request.amount,
+        paymentMethod: request.paymentMethod ?? "scheme",
       };
     },
   };

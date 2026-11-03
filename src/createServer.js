@@ -2,34 +2,67 @@ import { createServer as createHttpServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { catalogPort, paymentsPort, plug } from "./ports.js";
+import { catalogPort, ledgerPort, paymentsPort, plug } from "./ports.js";
+import { annotate, listTraces, runTrace, span } from "./trace.js";
 
 const publicDir = join(dirname(fileURLToPath(import.meta.url)), "public");
+const defaultShop = { countryCode: "NL", locale: "en-US", currency: "EUR" };
 
-export function createServer({ catalog, payments }) {
+export function createServer({ catalog, payments, ledger, shop = defaultShop }) {
   const products = plug("catalog", catalogPort, catalog);
   const checkout = plug("payments", paymentsPort, payments);
+  const books = plug("ledger", ledgerPort, ledger);
 
   return createHttpServer(async (request, response) => {
     try {
-      await route(request, response, products, checkout);
+      await route(request, response, products, checkout, books, shop);
     } catch (error) {
-      sendJson(response, 500, { error: error.message });
+      const status = error.statusCode && Number.isInteger(error.statusCode) ? error.statusCode : 500;
+      if (!error.traced) console.error(error);
+      sendJson(response, status, { error: shopperMessage(status) });
     }
   });
 }
 
-async function route(request, response, products, checkout) {
+async function route(request, response, products, checkout, books, shop) {
   const url = new URL(request.url, "http://127.0.0.1");
 
-  if (request.method === "GET" && url.pathname === "/") {
+  if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/result")) {
     const html = await readFile(join(publicDir, "index.html"));
     send(response, 200, html, "text/html; charset=utf-8");
     return;
   }
 
+  if (request.method === "GET" && url.pathname === "/trace") {
+    const html = await readFile(join(publicDir, "trace.html"));
+    send(response, 200, html, "text/html; charset=utf-8");
+    return;
+  }
+
+  if (request.method === "GET" && (url.pathname === "/app.js" || url.pathname === "/checkout-adyen.js" || url.pathname === "/trace.js")) {
+    const js = await readFile(join(publicDir, url.pathname.slice(1)));
+    send(response, 200, js, "text/javascript; charset=utf-8");
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/config") {
+    sendJson(response, 200, {
+      payments: checkout.name,
+      countryCode: shop.countryCode,
+      currency: shop.currency,
+      locale: shop.locale,
+    });
+    return;
+  }
+
   if (request.method === "GET" && url.pathname === "/api/products") {
-    sendJson(response, 200, { products: products.listProducts() });
+    const listed = products.listProducts();
+    sendJson(response, 200, { products: listed });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/traces") {
+    sendJson(response, 200, { traces: listTraces(url.searchParams.get("reference")) });
     return;
   }
 
@@ -46,34 +79,195 @@ async function route(request, response, products, checkout) {
 
   if (request.method === "POST" && url.pathname === "/api/checkout-sessions") {
     const body = await readJson(request);
-    const product = products.getProduct(body.productId);
-    if (!product) {
-      sendJson(response, 404, { error: "Unknown product" });
+    const reference = `coolbikes-${body.productId}-${Date.now()}`;
+    try {
+      await runTrace({ id: reference, operation: "POST /api/checkout-sessions" }, async () => {
+        const product = await span("catalog.getProduct", { productId: body.productId }, async () => {
+          const found = products.getProduct(body.productId);
+          if (!found) {
+            const error = new Error("Unknown product");
+            error.statusCode = 404;
+            throw error;
+          }
+          annotate({ amount: found.price });
+          return found;
+        });
+        const returnUrl = `${originOf(request)}/?redirect=1&reference=${encodeURIComponent(reference)}`;
+        const session = await span(
+          "payments.createSession",
+          { reference, countryCode: shop.countryCode, amount: product.price },
+          async () => {
+            const created = await checkout.createSession({
+              amount: product.price,
+              reference,
+              countryCode: shop.countryCode,
+              returnUrl,
+              channel: "Web",
+              shopperLocale: shop.locale,
+            });
+            annotate({ provider: created.provider, sessionId: created.id });
+            return created;
+          },
+        );
+        await span("ledger.record", { reference, sessionId: session.id, status: "session_created" }, async () => {
+          books.record({
+            reference,
+            productId: product.id,
+            productName: product.name,
+            amount: product.price,
+            sessionId: session.id,
+            provider: session.provider,
+            status: "session_created",
+            events: [{ type: "session_created", at: new Date().toISOString() }],
+          });
+        });
+        sendJson(response, 201, {
+          product,
+          session: { ...session, locale: shop.locale },
+        });
+      });
+    } catch (error) {
+      if (error.statusCode === 404) {
+        sendJson(response, 404, { error: "Unknown product" });
+        return;
+      }
+      throw error;
+    }
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/redirect") {
+    const body = await readJson(request);
+    if (!body.redirectResult) {
+      sendJson(response, 400, { error: "redirectResult is required" });
       return;
     }
-    const session = await checkout.createSession({
-      amount: product.price,
-      reference: `coolbikes-${product.id}-${Date.now()}`,
-      countryCode: "NL",
-      returnUrl: `${originOf(request)}/`,
-      channel: "Web",
+    await runTrace({ id: body.reference || `redirect-${Date.now()}`, operation: "POST /api/redirect" }, async () => {
+      const result = await span("payments.submitRedirect", {}, () =>
+        checkout.submitRedirect({ redirectResult: body.redirectResult }),
+      );
+      const reference = result.merchantReference || body.reference;
+      if (reference) {
+        await span(
+          "ledger.record",
+          { reference, resultCode: result.resultCode, pspReference: result.pspReference },
+          async () => {
+            books.record({
+              reference,
+              status: result.resultCode,
+              pspReference: result.pspReference,
+              events: [
+                {
+                  type: "redirect_result",
+                  resultCode: result.resultCode,
+                  pspReference: result.pspReference,
+                  at: new Date().toISOString(),
+                },
+              ],
+            });
+          },
+        );
+      }
+      sendJson(response, 200, { result });
     });
-    sendJson(response, 201, { product, session });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/webhooks") {
+    const body = await readJson(request);
+    const reference = body?.notificationItems?.[0]?.NotificationRequestItem?.merchantReference;
+    await runTrace({ id: reference || `webhook-${Date.now()}`, operation: "POST /api/webhooks" }, async () => {
+      const verified = await span("payments.verifyWebhook", {}, () => checkout.verifyWebhook(body));
+      for (const item of verified.items) {
+        await span(
+          "ledger.record",
+          {
+            reference: item.merchantReference,
+            eventCode: item.eventCode,
+            pspReference: item.pspReference,
+            success: item.success,
+          },
+          async () => {
+            books.record({
+              reference: item.merchantReference,
+              status: item.eventCode,
+              pspReference: item.pspReference,
+              success: item.success,
+              paymentMethod: item.paymentMethod,
+              amount: item.amount,
+              events: [
+                {
+                  type: item.eventCode,
+                  success: item.success,
+                  pspReference: item.pspReference,
+                  reason: item.reason,
+                  at: new Date().toISOString(),
+                },
+              ],
+            });
+          },
+        );
+      }
+      // Adyen expects [accepted] as plain text for standard webhooks.
+      send(response, 200, "[accepted]", "text/plain; charset=utf-8");
+    });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/payments") {
+    sendJson(response, 200, { payments: books.list() });
     return;
   }
 
   if (request.method === "POST" && url.pathname === "/api/refunds") {
     const body = await readJson(request);
-    if (!body.paymentPspReference) {
+    const payment =
+      (body.reference && books.getByReference(body.reference)) ||
+      books.list().find((entry) => entry.pspReference === body.paymentPspReference);
+
+    const paymentPspReference = body.paymentPspReference || payment?.pspReference;
+    if (!paymentPspReference) {
       sendJson(response, 400, { error: "paymentPspReference is required" });
       return;
     }
-    const refund = await checkout.refund({
-      paymentPspReference: body.paymentPspReference,
-      amount: body.amount,
-      reference: body.reference ?? `refund-${Date.now()}`,
+
+    const amount = body.amount || payment?.amount;
+    if (!amount) {
+      sendJson(response, 400, { error: "amount is required for a refund" });
+      return;
+    }
+
+    const refundReference = body.reference ?? payment?.reference ?? `refund-${Date.now()}`;
+    await runTrace({ id: refundReference, operation: "POST /api/refunds" }, async () => {
+      const refund = await span(
+        "payments.refund",
+        { paymentPspReference, amount, reference: refundReference },
+        () =>
+          checkout.refund({
+            paymentPspReference,
+            amount,
+            reference: refundReference,
+          }),
+      );
+
+      if (payment?.reference) {
+        await span("ledger.record", { reference: payment.reference, status: "REFUND_REQUESTED" }, async () => {
+          books.record({
+            reference: payment.reference,
+            status: "REFUND_REQUESTED",
+            events: [
+              {
+                type: "REFUND_REQUESTED",
+                pspReference: refund.pspReference,
+                at: new Date().toISOString(),
+              },
+            ],
+          });
+        });
+      }
+
+      sendJson(response, 201, { refund });
     });
-    sendJson(response, 201, { refund });
     return;
   }
 
@@ -115,8 +309,13 @@ function readJson(request) {
   });
 }
 
+function shopperMessage(status) {
+  if (status === 400 || status === 401) return "Checkout could not be started.";
+  return "Something went wrong. Please try again.";
+}
+
 function send(response, status, body, type) {
-  response.writeHead(status, { "content-type": type });
+  response.writeHead(status, { "content-type": type, "cache-control": "no-store" });
   response.end(body);
 }
 
