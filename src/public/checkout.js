@@ -40,11 +40,18 @@ async function start() {
     setStatus(listedBody.error || "That bike is not in the shop.");
     return;
   }
-  const price = formatPrice(listedBody.product.price);
-  document.querySelector("#item-name").textContent = listedBody.product.name;
+  const product = listedBody.product;
+  const price = formatPrice(product.price);
+  document.querySelector("#item-name").textContent = product.name;
   document.querySelector("#item-price").textContent = price;
   document.querySelector("#total-amount").textContent = price;
-  document.title = `${listedBody.product.name} · CoolBikesCo`;
+  const photo = document.querySelector("#item-photo");
+  if (product.image) {
+    photo.src = product.image;
+    photo.alt = product.name;
+    photo.hidden = false;
+  }
+  document.title = `${product.name} · CoolBikesCo`;
   setStatus("Loading payment methods…");
   const response = await fetch("/api/checkout-sessions", {
     method: "POST",

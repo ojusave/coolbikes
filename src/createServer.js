@@ -66,6 +66,9 @@ async function route(request, response, products, checkout, books, shop) {
     "/result.js": ["result.js", "text/javascript; charset=utf-8"],
     "/traces.js": ["traces.js", "text/javascript; charset=utf-8"],
     "/webhooks.js": ["webhooks.js", "text/javascript; charset=utf-8"],
+    "/bikes/city.jpg": ["bikes/city.jpg", "image/jpeg"],
+    "/bikes/gravel.jpg": ["bikes/gravel.jpg", "image/jpeg"],
+    "/bikes/cargo.jpg": ["bikes/cargo.jpg", "image/jpeg"],
   }[url.pathname];
   if (request.method === "GET" && staticFile) {
     await sendFile(response, staticFile[0], staticFile[1]);

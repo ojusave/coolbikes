@@ -22,6 +22,10 @@ async function loadProducts() {
     const card = document.createElement("a");
     card.className = "integration-card";
     card.href = `/checkout?product=${encodeURIComponent(product.id)}`;
+    const photo = document.createElement("img");
+    photo.className = "card-photo";
+    photo.src = product.image;
+    photo.alt = product.name;
     const content = document.createElement("div");
     content.className = "card-content";
     const title = document.createElement("h2");
@@ -34,7 +38,7 @@ async function loadProducts() {
     summary.className = "card-description";
     summary.textContent = product.summary;
     content.append(title, price, summary);
-    card.append(content);
+    card.append(photo, content);
     list.append(card);
   }
 }
