@@ -1,3 +1,6 @@
+// Checkout page. Shows the bike and total first, then asks the server to
+// open an Adyen session and mounts Drop-in in the payment box.
+
 const params = new URLSearchParams(location.search);
 const productId = params.get("product");
 const statusBox = document.querySelector("#status");
@@ -29,6 +32,18 @@ async function start() {
     location.href = "/";
     return;
   }
+  const listed = await fetch(`/api/products/${encodeURIComponent(productId)}`);
+  const listedBody = await listed.json();
+  if (!listed.ok) {
+    setStatus(listedBody.error || "That bike is not in the shop.");
+    return;
+  }
+  const price = formatPrice(listedBody.product.price);
+  document.querySelector("#item-name").textContent = listedBody.product.name;
+  document.querySelector("#item-price").textContent = price;
+  document.querySelector("#total-amount").textContent = price;
+  document.title = `${listedBody.product.name} · CoolBikesCo`;
+  setStatus("Loading payment methods…");
   const response = await fetch("/api/checkout-sessions", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -39,17 +54,13 @@ async function start() {
     setStatus(body.error || "Checkout could not be started.");
     return;
   }
-  const price = formatPrice(body.product.price);
-  document.querySelector("#item-name").textContent = body.product.name;
-  document.querySelector("#item-price").textContent = price;
-  document.querySelector("#total-amount").textContent = price;
-  document.title = `${body.product.name} · CoolBikesCo`;
   if (body.session.provider !== "adyen") {
     setStatus("This payments plug has no card form.");
     return;
   }
   await loadScript("/checkout-adyen.js");
   await window.CoolBikesAdyenCheckout.mount(body.session, document.querySelector("#dropin-container"), { setStatus });
+  setStatus("");
 }
 
 start().catch(() => setStatus("The card form could not be shown."));

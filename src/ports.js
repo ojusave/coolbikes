@@ -1,5 +1,5 @@
-// A port is the list of functions a plug must provide.
-// plug() checks that list once, when the app starts.
+// A port is the list of jobs a plug must be able to do.
+// plug() checks that list once, when the app starts, so a half-built plug fails immediately.
 
 export const catalogPort = ["listProducts", "getProduct"];
 

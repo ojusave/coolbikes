@@ -1,3 +1,7 @@
+// A span is one step of a payment, such as "ask Adyen for a session".
+// OpenTelemetry records when the step starts and ends. We print that to the
+// terminal so a reader can see the order of the calls. Secrets are left out.
+
 import { appendFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -6,7 +10,6 @@ import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 
 const traces = [];
 const spanIndex = new Map();
-const listeners = new Set();
 const traceFile = join(dirname(fileURLToPath(import.meta.url)), "..", "trace.log");
 const secretKey = /api[-_]?key|sessiondata|clientkey|hmac|password|secret|card|cvc|cvv|pan|number/i;
 
@@ -14,13 +17,11 @@ const processor = {
   onStart(span) {
     const record = remember(span, "start");
     print(record, "→");
-    publish(record.traceId);
   },
   onEnd(span) {
     const record = remember(span, "end");
     print(record, "←");
     appendFileSync(traceFile, `${JSON.stringify({ traceId: record.traceId, ...publicSpan(record) })}\n`);
-    publish(record.traceId);
   },
   shutdown() {
     return Promise.resolve();
@@ -37,11 +38,6 @@ const tracer = otel.getTracer("coolbikes", "1.0.0");
 export function listTraces(reference) {
   if (!reference) return traces.map(publicTrace);
   return traces.filter((item) => item.id === reference || item.spans.some((span) => span.reference === reference)).map(publicTrace);
-}
-
-export function subscribe(listener) {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
 }
 
 export function runTrace(fields, fn) {
@@ -111,13 +107,6 @@ function remember(span, phase) {
     if (span.status.message) record.error = span.status.message;
   }
   return record;
-}
-
-function publish(traceId) {
-  const trace = traces.find((item) => item.id === traceId);
-  if (!trace) return;
-  const message = JSON.stringify({ type: "update", trace: publicTrace(trace) });
-  for (const listener of listeners) listener(message);
 }
 
 function publicTrace(trace) {

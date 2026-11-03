@@ -1,4 +1,5 @@
-// Prices are minor units: 89900 = €899.00
+// The bike list is fixed on purpose. The assignment asks for a static product list.
+// Prices are in minor units: 89900 means €899.00. Adyen expects money this way.
 const bikes = [
   {
     id: "city",

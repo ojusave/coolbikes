@@ -1,9 +1,13 @@
+// The shop's HTTP routes.
+// Pages: the bike list, the Drop-in checkout, and the result/invoice.
+// The payments plug does the Adyen work. This file only decides which page or JSON to send.
+
 import { createServer as createHttpServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { catalogPort, ledgerPort, paymentsPort, plug } from "./ports.js";
-import { annotate, listTraces, runTrace, span, subscribe } from "./trace.js";
+import { annotate, runTrace, span } from "./trace.js";
 
 const publicDir = join(dirname(fileURLToPath(import.meta.url)), "public");
 const defaultShop = { countryCode: "NL", locale: "en-US", currency: "EUR" };
@@ -42,34 +46,11 @@ async function route(request, response, products, checkout, books, shop) {
     return;
   }
 
-  if (request.method === "GET" && url.pathname === "/trace") {
-    await sendFile(response, "trace.html", "text/html; charset=utf-8");
-    return;
-  }
-
-  if (request.method === "GET" && url.pathname === "/api/traces/stream") {
-    response.writeHead(200, {
-      "content-type": "text/event-stream",
-      "cache-control": "no-store",
-      connection: "keep-alive",
-    });
-    const write = (message) => response.write(`data: ${message}\n\n`);
-    write(JSON.stringify({ type: "snapshot", traces: listTraces() }));
-    const unsubscribe = subscribe(write);
-    const beat = setInterval(() => response.write(": keepalive\n\n"), 15000);
-    request.on("close", () => {
-      clearInterval(beat);
-      unsubscribe();
-    });
-    return;
-  }
-
   const staticFile = {
     "/shop.css": ["shop.css", "text/css; charset=utf-8"],
     "/app.js": ["app.js", "text/javascript; charset=utf-8"],
     "/checkout.js": ["checkout.js", "text/javascript; charset=utf-8"],
     "/checkout-adyen.js": ["checkout-adyen.js", "text/javascript; charset=utf-8"],
-    "/trace.js": ["trace.js", "text/javascript; charset=utf-8"],
     "/result.js": ["result.js", "text/javascript; charset=utf-8"],
   }[url.pathname];
   if (request.method === "GET" && staticFile) {
@@ -93,11 +74,6 @@ async function route(request, response, products, checkout, books, shop) {
     return;
   }
 
-  if (request.method === "GET" && url.pathname === "/api/traces") {
-    sendJson(response, 200, { traces: listTraces(url.searchParams.get("reference")) });
-    return;
-  }
-
   const productMatch = url.pathname.match(/^\/api\/products\/([^/]+)$/);
   if (request.method === "GET" && productMatch) {
     const product = products.getProduct(decodeURIComponent(productMatch[1]));
@@ -109,6 +85,7 @@ async function route(request, response, products, checkout, books, shop) {
     return;
   }
 
+  // Start a checkout for one bike. The amount comes from the catalog, not the browser.
   if (request.method === "POST" && url.pathname === "/api/checkout-sessions") {
     const body = await readJson(request);
     const reference = `coolbikes-${body.productId}-${Date.now()}`;
@@ -124,7 +101,7 @@ async function route(request, response, products, checkout, books, shop) {
           annotate({ amount: found.price });
           return found;
         });
-        const returnUrl = `${originOf(request)}/?redirect=1&reference=${encodeURIComponent(reference)}`;
+        const returnUrl = `${originOf(request)}/handleShopperRedirect?orderRef=${encodeURIComponent(reference)}`;
         const session = await span(
           "payments.createSession",
           { reference, countryCode: shop.countryCode, amount: product.price },
@@ -168,6 +145,52 @@ async function route(request, response, products, checkout, books, shop) {
     return;
   }
 
+  // Adyen sends the shopper here after a redirect payment such as iDEAL or 3D Secure.
+  if ((request.method === "GET" || request.method === "POST") && url.pathname === "/handleShopperRedirect") {
+    const redirect = request.method === "GET" ? Object.fromEntries(url.searchParams) : await readBody(request);
+    const orderRef = redirect.orderRef || redirect.reference;
+    if (!redirect.redirectResult && !redirect.payload) {
+      redirectTo(response, `/result/error?reference=${encodeURIComponent(orderRef || "")}`);
+      return;
+    }
+    try {
+      await runTrace({ id: orderRef || `redirect-${Date.now()}`, operation: "handleShopperRedirect" }, async () => {
+        const result = await span("payments.submitRedirect", { reference: orderRef }, () =>
+          checkout.submitRedirect({ redirectResult: redirect.redirectResult || redirect.payload }),
+        );
+        const reference = result.merchantReference || orderRef;
+        if (reference) {
+          await span(
+            "ledger.record",
+            { reference, resultCode: result.resultCode, pspReference: result.pspReference },
+            async () => {
+              books.record({
+                reference,
+                status: result.resultCode,
+                pspReference: result.pspReference,
+                events: [
+                  {
+                    type: "redirect_result",
+                    resultCode: result.resultCode,
+                    pspReference: result.pspReference,
+                    at: new Date().toISOString(),
+                  },
+                ],
+              });
+            },
+          );
+        }
+        redirectTo(
+          response,
+          `/result/${resultKind(result.resultCode)}?reference=${encodeURIComponent(reference || orderRef || "")}`,
+        );
+      });
+    } catch {
+      redirectTo(response, `/result/error?reference=${encodeURIComponent(orderRef || "")}`);
+    }
+    return;
+  }
+
   if (request.method === "POST" && url.pathname === "/api/redirect") {
     const body = await readJson(request);
     if (!body.redirectResult) {
@@ -205,6 +228,7 @@ async function route(request, response, products, checkout, books, shop) {
     return;
   }
 
+  // Adyen calls this itself. The reply must be the plain text [accepted].
   if (request.method === "POST" && url.pathname === "/api/webhooks") {
     const body = await readJson(request);
     const reference = body?.notificationItems?.[0]?.NotificationRequestItem?.merchantReference;
@@ -246,11 +270,39 @@ async function route(request, response, products, checkout, books, shop) {
     return;
   }
 
+  const orderMatch = url.pathname.match(/^\/api\/orders\/([^/]+)$/);
+  if (request.method === "GET" && orderMatch) {
+    const reference = decodeURIComponent(orderMatch[1]);
+    let order = books.getByReference(reference);
+    if (!order) {
+      sendJson(response, 404, { error: "Unknown order" });
+      return;
+    }
+    const sessionId = url.searchParams.get("sessionId");
+    const sessionResult = url.searchParams.get("sessionResult");
+    if (sessionId && sessionResult && !order.pspReference && typeof checkout.getSessionResult === "function") {
+      const resolved = await span("payments.getSessionResult", { sessionId, reference }, () =>
+        checkout.getSessionResult({ sessionId, sessionResult }),
+      );
+      order = books.record({
+        reference,
+        status: resolved.resultCode || order.status,
+        pspReference: resolved.pspReference || order.pspReference,
+        paymentMethod: resolved.paymentMethod || order.paymentMethod,
+        amount: resolved.amount || order.amount,
+        sessionId,
+      });
+    }
+    sendJson(response, 200, { order: invoiceOf(order) });
+    return;
+  }
+
   if (request.method === "GET" && url.pathname === "/api/payments") {
     sendJson(response, 200, { payments: books.list() });
     return;
   }
 
+  // Refund the captured payment. The shopper triggers this from the invoice.
   if (request.method === "POST" && url.pathname === "/api/refunds") {
     const body = await readJson(request);
     const payment =
@@ -262,6 +314,10 @@ async function route(request, response, products, checkout, books, shop) {
       sendJson(response, 400, { error: "paymentPspReference is required" });
       return;
     }
+    if (payment?.status === "REFUND_REQUESTED" || payment?.status === "REFUND") {
+      sendJson(response, 409, { error: "This payment already has a refund request." });
+      return;
+    }
 
     const amount = body.amount || payment?.amount;
     if (!amount) {
@@ -270,6 +326,7 @@ async function route(request, response, products, checkout, books, shop) {
     }
 
     const refundReference = body.reference ?? payment?.reference ?? `refund-${Date.now()}`;
+    try {
     await runTrace({ id: refundReference, operation: "POST /api/refunds" }, async () => {
       const refund = await span(
         "payments.refund",
@@ -287,6 +344,7 @@ async function route(request, response, products, checkout, books, shop) {
           books.record({
             reference: payment.reference,
             status: "REFUND_REQUESTED",
+            refundPspReference: refund.pspReference,
             events: [
               {
                 type: "REFUND_REQUESTED",
@@ -300,10 +358,68 @@ async function route(request, response, products, checkout, books, shop) {
 
       sendJson(response, 201, { refund });
     });
+    } catch {
+      if (!response.headersSent) {
+        sendJson(response, 502, { error: "The refund could not be requested." });
+      }
+    }
     return;
   }
 
   sendJson(response, 404, { error: "Not found" });
+}
+
+function invoiceOf(order) {
+  const closed = order.status === "REFUND_REQUESTED" || order.status === "REFUND";
+  return {
+    reference: order.reference,
+    productName: order.productName ?? null,
+    amount: order.amount ?? null,
+    status: order.status ?? null,
+    pspReference: order.pspReference ?? null,
+    paymentMethod: order.paymentMethod ?? null,
+    refundPspReference: order.refundPspReference ?? null,
+    canRefund: Boolean(order.pspReference) && !closed && order.success !== "false",
+  };
+}
+
+function resultKind(resultCode) {
+  if (resultCode === "Authorised") return "success";
+  if (resultCode === "Pending" || resultCode === "Received") return "pending";
+  if (resultCode === "Refused" || resultCode === "Cancelled" || resultCode === "Error") return "failed";
+  return "error";
+}
+
+function redirectTo(response, location) {
+  response.writeHead(302, { location });
+  response.end();
+}
+
+function readBody(request) {
+  const type = request.headers["content-type"] || "";
+  return readRaw(request).then((raw) => {
+    if (!raw) return {};
+    if (type.includes("application/json")) return JSON.parse(raw);
+    return Object.fromEntries(new URLSearchParams(raw));
+  });
+}
+
+function readRaw(request) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    request.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > 1_000_000) {
+        reject(new Error("Body too large"));
+        request.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    request.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    request.on("error", reject);
+  });
 }
 
 function originOf(request) {

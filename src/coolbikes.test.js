@@ -1,3 +1,6 @@
+// Checks the shop without calling Adyen: a broken plug is refused, and a
+// stand-in payment can be authorised and then refunded once.
+
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import test from "node:test";
@@ -6,6 +9,7 @@ import { memoryLedger } from "./adapters/ledger/memoryLedger.js";
 import { fakePayments } from "./adapters/payments/fakePayments.js";
 import { createServer } from "./createServer.js";
 import { paymentsPort, plug } from "./ports.js";
+import { listTraces } from "./trace.js";
 
 test("a payments plug without refund is refused", () => {
   assert.throws(
@@ -73,6 +77,13 @@ test("shop to refund works end to end on the fake payments plug", async () => {
     assert.equal(payments.payments[0].status, "AUTHORISATION");
     assert.equal(payments.payments[0].pspReference, pspReference);
 
+    const invoice = await fetch(
+      `${base}/api/orders/${encodeURIComponent(sessionBody.session.reference)}`,
+    ).then((response) => response.json());
+    assert.equal(invoice.order.productName, "City Step-Through");
+    assert.equal(invoice.order.pspReference, pspReference);
+    assert.equal(invoice.order.canRefund, true);
+
     const refunded = await fetch(`${base}/api/refunds`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -87,9 +98,19 @@ test("shop to refund works end to end on the fake payments plug", async () => {
     assert.equal(refundBody.refund.provider, "fake");
     assert.equal(refundBody.refund.paymentPspReference, pspReference);
 
-    const traced = await fetch(
-      `${base}/api/traces?reference=${encodeURIComponent(sessionBody.session.reference)}`,
+    const again = await fetch(`${base}/api/refunds`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ reference: sessionBody.session.reference }),
+    });
+    assert.equal(again.status, 409);
+    const after = await fetch(
+      `${base}/api/orders/${encodeURIComponent(sessionBody.session.reference)}`,
     ).then((response) => response.json());
+    assert.equal(after.order.status, "REFUND_REQUESTED");
+    assert.equal(after.order.canRefund, false);
+
+    const traced = { traces: listTraces(sessionBody.session.reference) };
     const operations = traced.traces.flatMap((trace) => trace.spans.map((span) => span.operation));
     assert.ok(traced.traces[0].spans.every((span) => span.depth >= 1));
     assert.ok(operations.includes("catalog.getProduct"));
@@ -99,10 +120,6 @@ test("shop to refund works end to end on the fake payments plug", async () => {
     assert.ok(traced.traces[0].spans.every((span) => span.outcome === "ok"));
     assert.equal(operations.includes("POST /v72/sessions"), false);
     assert.equal(JSON.stringify(traced).includes("sessionData"), false);
-
-    const tracePage = await fetch(`${base}/trace`);
-    assert.equal(tracePage.status, 200);
-    assert.match(await tracePage.text(), /Operations/);
   } finally {
     server.close();
     await once(server, "close");

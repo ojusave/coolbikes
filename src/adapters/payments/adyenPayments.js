@@ -1,3 +1,9 @@
+// Talks to Adyen's test Checkout API.
+// createSession asks Adyen to open a checkout. Drop-in in the browser then
+// shows the payment methods. The card number never comes to this server.
+// A refund is a later call, after the payment has a pspReference.
+// Adyen answers "received". The refund is finished when a webhook arrives.
+
 import {
   CheckoutAPI,
   Client,
@@ -70,6 +76,31 @@ export function adyenPayments(env = process.env) {
         returnUrl: request.returnUrl,
         channel: request.channel ?? "Web",
       };
+    },
+    async getSessionResult(request) {
+      return span("GET /sessions/{id}", { sessionId: request.sessionId }, async () => {
+        const response = await checkout.PaymentsApi.getResultOfPaymentSession(
+          request.sessionId,
+          request.sessionResult,
+        );
+        const payment = response.payments?.[0];
+        const method = payment?.paymentMethod;
+        annotate({
+          status: response.status,
+          resultCode: payment?.resultCode,
+          pspReference: payment?.pspReference,
+          reference: response.reference,
+        });
+        return {
+          provider: "adyen",
+          status: response.status,
+          reference: response.reference,
+          pspReference: payment?.pspReference ?? null,
+          resultCode: payment?.resultCode ?? null,
+          amount: payment?.amount ?? null,
+          paymentMethod: method?.brand || method?.type || null,
+        };
+      });
     },
     async refund(request) {
       const response = await span(

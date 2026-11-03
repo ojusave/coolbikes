@@ -17,11 +17,27 @@
   </header>
   <main class="page">
     <div class="status-container">
-      <div class="status">
+      <div class="status" id="status-card">
         <h1 class="status-title" id="title"></h1>
         <p class="status-message" id="message"></p>
-        <p class="status-message" id="reference"></p>
-        <a class="button" href="/">Return to bikes</a>
+        <div class="status-details" id="details" hidden>
+          <div class="detail-item">
+            <span class="detail-label">Order reference</span>
+            <span class="detail-value" id="reference"></span>
+          </div>
+        </div>
+        <div class="invoice" id="invoice" hidden>
+          <div class="detail-item"><span class="detail-label">Bike</span><span class="detail-value" id="invoice-bike"></span></div>
+          <div class="detail-item"><span class="detail-label">Amount</span><span class="detail-value" id="invoice-amount"></span></div>
+          <div class="detail-item"><span class="detail-label">Payment</span><span class="detail-value" id="invoice-method"></span></div>
+          <div class="detail-item"><span class="detail-label">PSP reference</span><span class="detail-value" id="invoice-psp"></span></div>
+          <p class="status-message" id="invoice-note"></p>
+          <button class="button" id="refund" type="button" hidden>Refund</button>
+        </div>
+        <div class="status-actions">
+          <a class="button" id="home" href="/">Return to bikes</a>
+          <a class="button secondary" id="again" href="/checkout" hidden>Try again</a>
+        </div>
       </div>
     </div>
   </main>

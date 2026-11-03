@@ -1,5 +1,5 @@
-// Stand-in for Adyen. Same ports as the Adyen plug so the shop
-// can run end-to-end before a test account is ready.
+// Stand-in for Adyen. It has the same jobs as the real plug, so tests can
+// run the whole shop without a network call or a test account.
 
 let sequence = 0;
 
@@ -48,18 +48,6 @@ export function fakePayments() {
         provider: "fake",
         ok: true,
         items: items.map((item) => item.NotificationRequestItem).filter(Boolean),
-      };
-    },
-    // Demo path: the fake Drop-in calls this so the ledger gets a
-    // pspReference without talking to Adyen.
-    async completeDemo(request) {
-      return {
-        provider: "fake",
-        resultCode: "Authorised",
-        pspReference: nextId("fake_psp"),
-        reference: request.reference,
-        amount: request.amount,
-        paymentMethod: request.paymentMethod ?? "scheme",
       };
     },
   };

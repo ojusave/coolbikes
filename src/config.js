@@ -1,3 +1,6 @@
+// Reads .env and decides whether this run talks to Adyen or uses the stand-in.
+// Real keys stay in .env. That file is not committed.
+
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,6 +21,8 @@ export function loadEnvFile(path = join(root, ".env")) {
   }
 }
 
+// The API key is the server's secret. The client key is the public key the browser uses.
+// Both are required before we call Adyen. Otherwise the stand-in plug is used.
 export function choosePayments() {
   if (process.env.ADYEN_API_KEY && process.env.ADYEN_CLIENT_KEY) return "adyen";
   return "fake";

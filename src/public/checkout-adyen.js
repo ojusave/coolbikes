@@ -1,3 +1,8 @@
+// Loads Adyen's Drop-in from their test CDN and mounts it.
+// Drop-in collects the card. This file only tells it which session to use
+// and where to send the shopper when the payment finishes.
+// SDK 6.6.0 matches Adyen's Node sessions example.
+
 const SDK = "6.6.0";
 const BASE = `https://checkoutshopper-test.cdn.adyen.com/checkoutshopper/sdk/${SDK}`;
 
@@ -30,9 +35,15 @@ async function ensureSdk() {
   });
 }
 
-function resultPath(resultCode, reference) {
-  const query = reference ? `?reference=${encodeURIComponent(reference)}` : "";
-  if (resultCode === "Authorised") return `/result/success${query}`;
+function resultPath(resultCode, session, sessionResult) {
+  const params = new URLSearchParams();
+  if (session.reference) params.set("reference", session.reference);
+  if (resultCode === "Authorised") {
+    if (session.id) params.set("sessionId", session.id);
+    if (sessionResult) params.set("sessionResult", sessionResult);
+    return `/result/success?${params}`;
+  }
+  const query = params.toString() ? `?${params}` : "";
   if (resultCode === "Pending" || resultCode === "Received") return `/result/pending${query}`;
   if (resultCode === "Cancelled" || resultCode === "Refused") return `/result/failed${query}`;
   return `/result/error${query}`;
@@ -51,14 +62,14 @@ window.CoolBikesAdyenCheckout = {
       amount: session.amount,
       showPayButton: true,
       onPaymentCompleted(result) {
-        location.href = resultPath(result.resultCode, session.reference);
+        location.href = resultPath(result.resultCode, session, result.sessionResult);
       },
       onPaymentFailed(result) {
-        location.href = resultPath(result?.resultCode, session.reference);
+        location.href = resultPath(result?.resultCode, session);
       },
       onError(error) {
         console.error("Drop-in error", error);
-        location.href = resultPath("Error", session.reference);
+        location.href = resultPath("Error", session);
       },
     });
     return new Dropin(checkoutUi, {

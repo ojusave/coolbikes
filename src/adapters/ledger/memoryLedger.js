@@ -1,3 +1,6 @@
+// Remembers orders in memory, keyed by the order reference we send to Adyen.
+// A restart forgets them. That is enough for this exercise.
+
 export function memoryLedger() {
   const byReference = new Map();
 

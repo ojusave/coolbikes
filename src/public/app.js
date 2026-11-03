@@ -1,3 +1,6 @@
+// Fills the home page with bikes from the server.
+// Clicking a card opens checkout for that bike.
+
 const list = document.querySelector("#products");
 
 function formatPrice(price) {

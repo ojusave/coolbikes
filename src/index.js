@@ -1,3 +1,7 @@
+// Starts the shop.
+// A "plug" is a swappable piece: the bike list, the payment company, or the order memory.
+// This file is the only place that picks which plug is used.
+
 import { staticCatalog } from "./adapters/catalog/staticCatalog.js";
 import { memoryLedger } from "./adapters/ledger/memoryLedger.js";
 import { adyenPayments } from "./adapters/payments/adyenPayments.js";
@@ -7,7 +11,6 @@ import { createServer } from "./createServer.js";
 
 loadEnvFile();
 
-// Composition root. This is the only file that chooses the plugs.
 const catalog = staticCatalog();
 const ledger = memoryLedger();
 const shop = shopSettings();
