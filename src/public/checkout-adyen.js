@@ -72,7 +72,7 @@ window.CoolBikesAdyenCheckout = {
         location.href = resultPath("Error", session);
       },
     });
-    return new Dropin(checkoutUi, {
+    const dropin = new Dropin(checkoutUi, {
       paymentMethodsConfiguration: {
         card: {
           showBrandIcon: true,
@@ -89,5 +89,30 @@ window.CoolBikesAdyenCheckout = {
         },
       },
     }).mount(element);
+
+    // Adyen returns iDEAL before cards in this account's session response.
+    // Reorder the rendered list so cards appear first, without changing the
+    // payment flow itself.
+    const reorderPaymentMethods = () => {
+      const list = element.querySelector(".adyen-checkout__payment-methods-list");
+      if (!list) return;
+      const items = [...list.querySelectorAll(":scope > .adyen-checkout__payment-method")];
+      if (items.length < 2) return;
+      if (items[0].classList.contains("adyen-checkout__payment-method--scheme")) return;
+      const sorted = items.sort((a, b) => {
+        const aCard = a.classList.contains("adyen-checkout__payment-method--scheme") ? 0 : 1;
+        const bCard = b.classList.contains("adyen-checkout__payment-method--scheme") ? 0 : 1;
+        return aCard - bCard;
+      });
+      let reordering = false;
+      if (reordering) return;
+      reordering = true;
+      sorted.forEach((item) => list.appendChild(item));
+      reordering = false;
+    };
+    setTimeout(reorderPaymentMethods, 0);
+    const observer = new MutationObserver(reorderPaymentMethods);
+    observer.observe(element, { childList: true, subtree: true });
+    return dropin;
   },
 };
