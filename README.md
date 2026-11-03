@@ -1,8 +1,24 @@
-# CoolBikesCo
+<h1 align="center">CoolBikesCo</h1>
 
-A small Dutch bike shop built with **Adyen Sessions**, **Web Drop-in**, and **Node.js**. Choose a bike, pay in the test environment, inspect the API calls, and request a refund or cancellation from the invoice.
+<p align="center">
+  A Dutch bike shop demo built with Adyen Sessions and Web Drop-in.<br>
+  Choose a bike, follow the API calls, and request a refund or cancellation.
+</p>
 
-[Integration code](src/adapters/payments/adyenPayments.js) · [Developer experience notes](FRICTION.md)
+<p align="center">
+  <img src="https://img.shields.io/badge/Adyen-Web%20Drop--in-0ABF53?style=flat-square" alt="Adyen Web Drop-in">
+  <img src="https://img.shields.io/badge/Node.js-Backend-339933?style=flat-square&amp;logo=nodedotjs&amp;logoColor=white" alt="Node.js backend">
+  <img src="https://img.shields.io/badge/JavaScript-ES%20Modules-F7DF1E?style=flat-square&amp;logo=javascript&amp;logoColor=black" alt="JavaScript ES modules">
+  <img src="https://img.shields.io/badge/OpenTelemetry-Traces-425CC7?style=flat-square&amp;logo=opentelemetry&amp;logoColor=white" alt="OpenTelemetry traces">
+  <img src="https://img.shields.io/badge/Payments-Test%20environment-635BFF?style=flat-square" alt="Test environment">
+</p>
+
+<p align="center">
+  <a href="#run-locally">Run locally</a> ·
+  <a href="#try-it">Try it</a> ·
+  <a href="src/adapters/payments/adyenPayments.js">Integration code</a> ·
+  <a href="FRICTION.md">Developer experience notes</a>
+</p>
 
 ## Run locally
 
