@@ -21,7 +21,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: Capture actual app pages without payment credentials
         run: |
-          node src/index.js > /tmp/coolbikes.log 2>&1 &
+          node src/index.js &
           node --input-type=module <<'JS'
           import { chromium } from 'playwright';
           import { mkdir } from 'node:fs/promises';
