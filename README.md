@@ -20,6 +20,18 @@
   <a href="FRICTION.md">Developer experience notes</a>
 </p>
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/catalog.png" alt="CoolBikesCo catalog with city, gravel, and cargo bikes beside the API trace panel" width="100%">
+</p>
+<p align="center"><em>Choose a bike and follow the integration through the API trace panel.</em></p>
+
+<p align="center">
+  <img src="docs/screenshots/payment-result.png" alt="Payment result for a City Step-Through bike, showing Visa, the payment reference, and the refund or cancellation action" width="640">
+</p>
+<p align="center"><em>Payment result and invoice with the refund-or-cancellation action.</em></p>
+
 ## Run locally
 
 You need Node.js and npm. For Adyen checkout, you also need a test account with a merchant account and API credentials.
