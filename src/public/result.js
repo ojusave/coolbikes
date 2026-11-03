@@ -49,14 +49,14 @@ function paintInvoice(order) {
   const note = document.querySelector("#invoice-note");
   const button = document.querySelector("#refund");
   if (order.status === "REFUND_REQUESTED" || order.status === "REFUND") {
-    document.querySelector("#title").textContent = "Refund requested";
+    document.querySelector("#title").textContent = "Refund or cancellation requested";
     document.querySelector("#message").textContent =
-      "Adyen accepted the refund. The final result arrives later, in a webhook, and in the Customer Area.";
+      "A refund or cancellation was requested. Request acceptance does not confirm the final outcome; check the payment status in the Customer Area.";
     note.textContent = order.refundPspReference
-      ? `Refund reference ${order.refundPspReference}. Status: received.`
-      : "Adyen has not confirmed the refund yet.";
+      ? `Request reference ${order.refundPspReference}. Check the final refund or cancellation outcome in the Customer Area.`
+      : "The final refund or cancellation outcome is not confirmed here.";
     button.hidden = true;
-    document.title = "Refund requested · CoolBikesCo";
+    document.title = "Refund or cancellation requested · CoolBikesCo";
     return;
   }
   if (!order.canRefund) {
@@ -64,16 +64,16 @@ function paintInvoice(order) {
     button.hidden = true;
     return;
   }
-  note.textContent = "This returns the amount above. Adyen confirms the refund after this request.";
+  note.textContent = "Request a refund, or cancel the payment if it has not been captured. The final outcome is confirmed later.";
   button.hidden = false;
   button.disabled = false;
-  button.textContent = money(order.amount) ? `Refund ${money(order.amount)}` : "Refund";
+  button.textContent = money(order.amount) ? `Refund or cancel ${money(order.amount)}` : "Refund or cancel";
   button.onclick = () => requestRefund(order, button, note);
 }
 
 async function requestRefund(order, button, note) {
   button.disabled = true;
-  button.textContent = "Requesting refund…";
+  button.textContent = "Requesting refund or cancellation…";
   const response = await fetch("/api/refunds", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -83,7 +83,7 @@ async function requestRefund(order, button, note) {
   if (!response.ok) {
     note.textContent = body.error || "The refund could not be requested.";
     button.disabled = false;
-    button.textContent = money(order.amount) ? `Refund ${money(order.amount)}` : "Refund";
+    button.textContent = money(order.amount) ? `Refund or cancel ${money(order.amount)}` : "Refund or cancel";
     return;
   }
   const again = await fetch(`/api/orders/${encodeURIComponent(order.reference)}`);
@@ -91,7 +91,7 @@ async function requestRefund(order, button, note) {
     paintInvoice((await again.json()).order);
     return;
   }
-  note.textContent = "Refund requested.";
+  note.textContent = "Refund or cancellation requested; final outcome not yet confirmed.";
   button.hidden = true;
 }
 
