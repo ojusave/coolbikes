@@ -64,6 +64,8 @@ The first merchant code tried, `NAAccount827_CycleTest_TEST`, authenticated and 
 
 After selecting iDEAL and submitting, the shopper is redirected to Adyen's test issuer page (moneyapp) showing amount, IBAN, receiver, and "Authorize payment / Cancel payment" buttons. The button did not respond to clicks in the embedded checkout; unclear whether this is Adyen's simulator or our redirect/iframe setup. Need to retest in a top-level tab and check console errors.
 
+Later Render log review, 2 November: a redirect for `coolbikes-city-1793685187152` reached `/handleShopperRedirect`, called Adyen `/v72/payments/details`, and returned HTTP 200 with `resultCode=Cancelled` and PSP reference `FW7G6GGKPPGK4T75`. This verifies that the redirect return path ran. The response does not identify the payment method, so it does not independently prove that this was iDEAL or that an iDEAL payment succeeded. The simulator blocker remains unresolved.
+
 ## 7. AI workflow: what worked and what needed correction
 
 Reconstructed on 2 November from retained build history, not a contemporaneous addition to the original log. The examples below occurred in the earlier TypeScript `coolbikesco` prototype on 31 October. The current JavaScript `coolbikes` app is a later implementation; do not attribute the earlier build's tests or SDK versions to it.
@@ -106,8 +108,36 @@ I would evaluate it with first-time developers: time from credential creation to
 
 ## 9. Exact bonus claims for the presentation
 
-- **Refund/cancellation:** the invoice initiates an API request outside Customer Area. The adapter calls `/payments/{pspReference}/reversals`, through `refundOrCancelPayment`. It can cancel an uncaptured authorization or refund a captured payment. Describe it as a refund-or-cancellation request; an accepted request is not evidence of a completed refund. A completed-refund claim needs the correlated final outcome for a captured payment. This review did not establish that outcome.
-- **iDEAL:** selection and redirect to the test simulator were observed. Authorization/completion remains blocked as described in entry 6. Do not call this an end-to-end iDEAL success or assign the root cause to Adyen without further evidence.
-- **Webhooks:** a receiver and event viewer exist in code. HMAC verification runs only when its key is configured. Code presence and locally simulated events do not establish delivery from Adyen over the public internet; that needs a real correlated delivery record. This review did not establish one.
+Updated after inspecting the deployed service's Render logs on 2 November. This supersedes the earlier assessment that webhook delivery and cancellation outcomes had not been established.
 
-Suggested spoken wording: “I added an API refund-or-cancellation request and a webhook receiver. For iDEAL I reached the test simulator, but could not complete authorization in the embedded browser. I have not established the final refund outcome or public webhook delivery in the evidence reviewed here.”
+- **Refund/cancellation:** an actual app request to `/api/refunds` called Adyen's `/reversals` endpoint and received HTTP 201 with `result=received`. Separately, another payment produced an accepted `CANCEL_OR_REFUND` webhook with `success=true` and `modification.action=cancel`. We have evidence of an API reversal request and a successful cancellation. These are different payment references; they are not one continuous request-to-webhook trace. Neither proves a completed refund of a captured payment.
+- **iDEAL:** selecting iDEAL and reaching the simulator were observed during the integration. Render also records a completed redirect-return call with `resultCode=Cancelled`, but its response does not identify the method. A successful iDEAL payment remains unverified; do not assign the simulator failure to Adyen without further evidence.
+- **Webhooks:** the deployed receiver received authorization and cancellation notifications, recorded them in the ledger, and returned HTTP 200 with `[accepted]`. One authorization matches the PSP and merchant reference on the supplied invoice screenshot. This is runtime processing evidence beyond code inspection or offline tests. The reviewed logs do not establish whether HMAC verification was enabled; the code only checks signatures when `ADYEN_HMAC_KEY` is configured.
+
+Suggested spoken wording: “The deployed app processed payment notifications and accepted an API reversal request. I also verified a successful cancellation, explicitly identified as a cancellation in the webhook. I reached the iDEAL simulator, but have not verified a successful iDEAL payment.”
+
+## 10. Verified Render runtime evidence
+
+Reviewed the [CoolBikes Render logs](https://dashboard.render.com/web/srv-dbkjq9uk1f9s73d63s9g/logs) for service `srv-dbkjq9uk1f9s73d63s9g`, from service creation through the review. All local times below are **2 November 2026, PST (UTC−8)**. Render's source timestamps fall on 3 November UTC.
+
+| Local time / source UTC | Observation | Correlation and conclusion |
+| --- | --- | --- |
+| 7:25:23 PM / 03:25:23Z | Session result: `completed`, `Authorised` | Merchant reference `coolbikes-city-1793676313672`; payment PSP `WGJ9234XW8VQ3M75`. Server-side payment-result lookup succeeded. |
+| 7:25:28 PM / 03:25:28Z | `POST /api/refunds` → `POST /payments/{psp}/reversals`; HTTP 201, `received` | Same payment PSP `WGJ9234XW8VQ3M75`; modification PSP `R2S2SP8D3J2P4C75`. Confirms an API request outside Customer Area, not its final outcome. |
+| 9:51:54 PM / 05:51:54Z | `AUTHORISATION`, `success=true`, Visa, EUR 899.00; recorded and acknowledged | Merchant reference `coolbikes-city-1793685098738`; payment PSP `FSKHMP4T5CFMNB75`. Receiver returned HTTP 200 with `[accepted]`. |
+| 9:52:31 PM / 05:52:31Z | `CANCEL_OR_REFUND`, `success=true`, `modification.action=cancel`; recorded and acknowledged | Reference `refund-coolbikes-city-1793685098738`; modification PSP `LFVXN33B8NR7JQ75`; `originalReference=FSKHMP4T5CFMNB75`. Links this cancellation to the preceding Visa authorization. It is not a captured-payment refund. |
+| 9:54:17 PM / 05:54:17Z | `POST /v72/payments/details` returned HTTP 200, `Cancelled` | Merchant reference `coolbikes-city-1793685187152`; PSP `FW7G6GGKPPGK4T75`. Redirect handling ran; payment method and successful iDEAL authorization are not established. |
+| 10:25:40 PM / 06:25:40Z | `AUTHORISATION`, `success=true`; received, accepted, and processed | Merchant reference `coolbikes-city-1793687109972`; PSP `X3FKWKQLLW7NVB75`. Both match the supplied payment-invoice screenshot. |
+| 10:34:40 PM / 06:34:40Z | Latest reviewed deployment became live; startup logged `payments plug: adyen` and `shop: NL EUR` | Commit `e4da2b4abb8030c4842ea745c01a54d3e33fb8d2` includes the SDK import fix. Render used Node 24.22.1. |
+
+The Customer Area API-log screenshot separately shows `POST /v72/sessions` for `coolbikes-city-1793687109972`, matching the invoice and the 10:25:40 PM authorization webhook. It establishes Customer Area API-log evidence; it does not replace viewing the payment's transaction-detail page there.
+
+### Fresh-install issue found during verification
+
+The screenshot-capture run on Node 22 failed at startup with `Named export 'CheckoutAPI' not found` because the Adyen SDK is CommonJS. The adapter now imports the default exports object and destructures the SDK classes. [Fix commit](https://github.com/ojusave/coolbikes/commit/93c4e5c50508f1210ee6e0653c7331e2354eff9e).
+
+[Node 22 verification](https://github.com/ojusave/coolbikes/actions/runs/41590717538) passed a clean `npm ci`, adapter construction without network calls, offline tests, and `npm start` serving the catalog. Render subsequently deployed the fix successfully on Node 24. These checks establish startup compatibility; they do not represent a new payment test.
+
+### What changed in the assessment
+
+Before reading the hosted logs, the review only established that the webhook and reversal code existed. The logs supplied the missing runtime evidence. The remaining distinctions are a successful cancellation versus a captured-payment refund, a cancelled redirect versus a successful iDEAL payment, and handler acceptance versus proof that HMAC checking was enabled. Keep those distinctions in the presentation.
