@@ -19,6 +19,12 @@
   <a href="FRICTION.md">Developer experience notes</a>
 </p>
 
+## What it is
+
+CoolBikesCo is a sample e-commerce integration for a fictional bicycle shop in the Netherlands, built for Adyen's Developer Experience exercise. It demonstrates a product catalog, Sessions + Drop-in checkout, a payment invoice, and API refund-or-cancellation requests.
+
+The API trace panel shows the requests and responses behind the shopper journey. The accompanying [friction log](FRICTION.md) documents the integration experience, AI-assisted workflow, and suggested improvements.
+
 <p align="center">
   <img src="docs/screenshots/catalog.png" alt="Bike catalog and API trace panel" width="100%">
 </p>
