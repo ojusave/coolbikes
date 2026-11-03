@@ -63,3 +63,51 @@ The first merchant code tried, `NAAccount827_CycleTest_TEST`, authenticated and 
 ## 6. iDEAL test flow lands on Adyen's moneyapp simulator
 
 After selecting iDEAL and submitting, the shopper is redirected to Adyen's test issuer page (moneyapp) showing amount, IBAN, receiver, and "Authorize payment / Cancel payment" buttons. The button did not respond to clicks in the embedded checkout; unclear whether this is Adyen's simulator or our redirect/iframe setup. Need to retest in a top-level tab and check console errors.
+
+## 7. AI workflow: what worked and what needed correction
+
+Reconstructed on 2 November from retained build history, not a contemporaneous addition to the original log. The examples below occurred in the earlier TypeScript `coolbikesco` prototype on 31 October. The current JavaScript `coolbikes` app is a later implementation; do not attribute the earlier build's tests or SDK versions to it.
+
+The workflow was public Adyen documentation → generated implementation → installed SDK declarations → compilation and offline checks → browser interaction. The instruction was to build the integration; the code suggestions below are retained artifacts, not reconstructed prompt quotations.
+
+### Useful output: Sessions and Drop-in
+
+The assistant used the official Sessions guide and generated server-side session creation with the official Node library, plus the v6 `AdyenCheckout` and `Dropin` named exports in the browser. It checked version context and installed declarations rather than mixing in older `checkout.create('dropin')` examples. The earlier prototype subsequently built and passed eight offline tests. That validates a useful implementation scaffold, not an actual Adyen payment. The current app also uses Sessions and Drop-in.
+
+### Observed mistake: plausible but incorrect SDK configuration
+
+- Generated suggestion: `new Client({ environment: 'TEST', timeout: 15000, ... })`.
+- Verification: the first TypeScript check failed with TS2322 because the string `"TEST"` was not assignable to `EnvironmentEnum`. Inspection of the installed configuration declarations also showed that the timeout property was `connectionTimeoutMillis`.
+- Correction: import `EnvironmentEnum`, use `EnvironmentEnum.TEST`, and set `connectionTimeoutMillis: 15000`.
+- Outcome: subsequent build and offline checks passed. No payment request was needed to catch this error.
+- Lesson: a plausible AI configuration needs verification against the installed SDK. Its types helped diagnose an assistant mistake; this was not an Adyen API failure.
+
+### Observed mistake: a browser assumption that compilation missed
+
+- Generated behavior: create a UUID before rendering checkout or checking missing configuration.
+- Verification: selecting Canal Cruiser in the HTTP managed preview did nothing; the browser console reported `TypeError: crypto.randomUUID is not a function`.
+- Correction: render the selected bike and setup blocker first, then require a secure context before starting a payment session and generating the UUID.
+- Outcome: the build history records the fix and browser testing of all three product selections. Actual payment verification remained blocked by account access in that earlier run.
+- Lesson: browser interaction caught an AI implementation error that compilation and offline server tests did not. This was a preview-context issue, not evidence that Adyen rejected a payment.
+
+Evidence: retained Codex build chat `01a191ef-c662-7622-8533-0b17b063702c`, original friction entries F03, F04, and F08; compiler output and correction are recorded in that chat. No exact prompt wording, time-to-fix, or payment outcome has been invented.
+
+## 8. The one improvement I would prioritize
+
+**A guided first-checkout check in the test Customer Area.** Give a developer one place to establish that their saved credential and selected merchant are ready for the first Sessions + Drop-in checkout.
+
+The evidence is the repeated ambiguity in entries 2–5: documentation points to absent tabs; a generated key looks ready before Save changes; company, credential, and merchant identifiers are easy to confuse; and an empty payment-method list gives little direction. Each leaves the developer deciding whether to debug code, credentials, or account configuration before they have one successful payment.
+
+The proposed flow would explicitly select a merchant, distinguish it from the company/login identifiers, confirm that credential changes were saved, and show the relevant scope, origin, and payment-method checks for the intended NL/EUR checkout. Where a check cannot establish a cause, it should say what remains unknown rather than blame a particular setting. Finish with a minimal Sessions example populated with non-secret configuration and a path to its API log. This is a proposal, not a claim that such diagnostics already exist.
+
+Why first: these blockers occur before the developer's first successful checkout, and AI can generate plausible code without knowing the account state. Clarifying that boundary helps both human and AI-assisted integrations. I would prioritize it ahead of simulator polish or more sample endpoints because those help later in the journey. That prioritization is a hypothesis from this exercise, not a measured finding across merchants.
+
+I would evaluate it with first-time developers: time from credential creation to the first successful test checkout; avoidable credential/merchant corrections; and whether they can correctly identify the next action after a failed check. Establish a baseline before promising an improvement percentage.
+
+## 9. Exact bonus claims for the presentation
+
+- **Refund/cancellation:** the invoice initiates an API request outside Customer Area. The adapter calls `/payments/{pspReference}/reversals`, through `refundOrCancelPayment`. It can cancel an uncaptured authorization or refund a captured payment. Describe it as a refund-or-cancellation request; an accepted request is not evidence of a completed refund. A completed-refund claim needs the correlated final outcome for a captured payment. This review did not establish that outcome.
+- **iDEAL:** selection and redirect to the test simulator were observed. Authorization/completion remains blocked as described in entry 6. Do not call this an end-to-end iDEAL success or assign the root cause to Adyen without further evidence.
+- **Webhooks:** a receiver and event viewer exist in code. HMAC verification runs only when its key is configured. Code presence and locally simulated events do not establish delivery from Adyen over the public internet; that needs a real correlated delivery record. This review did not establish one.
+
+Suggested spoken wording: “I added an API refund-or-cancellation request and a webhook receiver. For iDEAL I reached the test simulator, but could not complete authorization in the embedded browser. I have not established the final refund outcome or public webhook delivery in the evidence reviewed here.”
