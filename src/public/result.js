@@ -49,10 +49,14 @@ function paintInvoice(order) {
   const note = document.querySelector("#invoice-note");
   const button = document.querySelector("#refund");
   if (order.status === "REFUND_REQUESTED" || order.status === "REFUND") {
+    document.querySelector("#title").textContent = "Refund requested";
+    document.querySelector("#message").textContent =
+      "Adyen accepted the refund. The final result arrives later, in a webhook, and in the Customer Area.";
     note.textContent = order.refundPspReference
-      ? `Refund requested. Reference ${order.refundPspReference}.`
-      : "Refund requested. Adyen has not confirmed it yet.";
+      ? `Refund reference ${order.refundPspReference}. Status: received.`
+      : "Adyen has not confirmed the refund yet.";
     button.hidden = true;
+    document.title = "Refund requested · CoolBikesCo";
     return;
   }
   if (!order.canRefund) {
