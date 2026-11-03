@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { catalogPort, ledgerPort, paymentsPort, plug } from "./ports.js";
-import { annotate, listTraces, runTrace, span } from "./trace.js";
+import { annotate, listTraces, runTrace, span, subscribe } from "./trace.js";
 
 const publicDir = join(dirname(fileURLToPath(import.meta.url)), "public");
 const defaultShop = { countryCode: "NL", locale: "en-US", currency: "EUR" };
@@ -27,21 +27,53 @@ export function createServer({ catalog, payments, ledger, shop = defaultShop }) 
 async function route(request, response, products, checkout, books, shop) {
   const url = new URL(request.url, "http://127.0.0.1");
 
-  if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/result")) {
-    const html = await readFile(join(publicDir, "index.html"));
-    send(response, 200, html, "text/html; charset=utf-8");
+  if (request.method === "GET" && url.pathname === "/") {
+    await sendFile(response, "index.html", "text/html; charset=utf-8");
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/checkout") {
+    await sendFile(response, "checkout.html", "text/html; charset=utf-8");
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname.startsWith("/result/")) {
+    await sendFile(response, "result.html", "text/html; charset=utf-8");
     return;
   }
 
   if (request.method === "GET" && url.pathname === "/trace") {
-    const html = await readFile(join(publicDir, "trace.html"));
-    send(response, 200, html, "text/html; charset=utf-8");
+    await sendFile(response, "trace.html", "text/html; charset=utf-8");
     return;
   }
 
-  if (request.method === "GET" && (url.pathname === "/app.js" || url.pathname === "/checkout-adyen.js" || url.pathname === "/trace.js")) {
-    const js = await readFile(join(publicDir, url.pathname.slice(1)));
-    send(response, 200, js, "text/javascript; charset=utf-8");
+  if (request.method === "GET" && url.pathname === "/api/traces/stream") {
+    response.writeHead(200, {
+      "content-type": "text/event-stream",
+      "cache-control": "no-store",
+      connection: "keep-alive",
+    });
+    const write = (message) => response.write(`data: ${message}\n\n`);
+    write(JSON.stringify({ type: "snapshot", traces: listTraces() }));
+    const unsubscribe = subscribe(write);
+    const beat = setInterval(() => response.write(": keepalive\n\n"), 15000);
+    request.on("close", () => {
+      clearInterval(beat);
+      unsubscribe();
+    });
+    return;
+  }
+
+  const staticFile = {
+    "/shop.css": ["shop.css", "text/css; charset=utf-8"],
+    "/app.js": ["app.js", "text/javascript; charset=utf-8"],
+    "/checkout.js": ["checkout.js", "text/javascript; charset=utf-8"],
+    "/checkout-adyen.js": ["checkout-adyen.js", "text/javascript; charset=utf-8"],
+    "/trace.js": ["trace.js", "text/javascript; charset=utf-8"],
+    "/result.js": ["result.js", "text/javascript; charset=utf-8"],
+  }[url.pathname];
+  if (request.method === "GET" && staticFile) {
+    await sendFile(response, staticFile[0], staticFile[1]);
     return;
   }
 
@@ -312,6 +344,11 @@ function readJson(request) {
 function shopperMessage(status) {
   if (status === 400 || status === 401) return "Checkout could not be started.";
   return "Something went wrong. Please try again.";
+}
+
+async function sendFile(response, name, type) {
+  const body = await readFile(join(publicDir, name));
+  send(response, 200, body, type);
 }
 
 function send(response, status, body, type) {

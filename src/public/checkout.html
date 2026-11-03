@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Checkout · CoolBikesCo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/shop.css">
+</head>
+<body>
+  <header id="header">
+    <div class="header-content">
+      <a class="logo-link" href="/">CoolBikesCo</a>
+    </div>
+  </header>
+  <main id="payment-page">
+    <div class="checkout-container">
+      <section class="payment-section">
+        <h2 class="section-title">Select your payment method</h2>
+        <div class="payment-container">
+          <div id="dropin-container" class="payment"></div>
+          <p id="status" class="checkout-error" role="status"></p>
+        </div>
+      </section>
+      <aside class="order-summary-section">
+        <h2 class="section-title">Order summary</h2>
+        <div class="order-summary-box">
+          <div class="order-item">
+            <span class="item-name" id="item-name">Bike</span>
+            <span class="item-price" id="item-price"></span>
+          </div>
+          <div class="order-divider"></div>
+          <div class="order-total">
+            <span class="total-label">Total:</span>
+            <span class="total-amount" id="total-amount"></span>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </main>
+  <script src="/checkout.js"></script>
+</body>
+</html>

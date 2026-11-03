@@ -30,8 +30,16 @@ async function ensureSdk() {
   });
 }
 
+function resultPath(resultCode, reference) {
+  const query = reference ? `?reference=${encodeURIComponent(reference)}` : "";
+  if (resultCode === "Authorised") return `/result/success${query}`;
+  if (resultCode === "Pending" || resultCode === "Received") return `/result/pending${query}`;
+  if (resultCode === "Cancelled" || resultCode === "Refused") return `/result/failed${query}`;
+  return `/result/error${query}`;
+}
+
 window.CoolBikesAdyenCheckout = {
-  async mount(session, element, { setStatus }) {
+  async mount(session, element) {
     await ensureSdk();
     const { AdyenCheckout, Dropin } = window.AdyenWeb;
     const checkoutUi = await AdyenCheckout({
@@ -43,22 +51,30 @@ window.CoolBikesAdyenCheckout = {
       amount: session.amount,
       showPayButton: true,
       onPaymentCompleted(result) {
-        setStatus("ok", result.resultCode === "Authorised" ? "Payment received." : `Payment ${result.resultCode}.`);
+        location.href = resultPath(result.resultCode, session.reference);
       },
-      onPaymentFailed() {
-        setStatus("error", "The payment was not completed. You can try again.");
+      onPaymentFailed(result) {
+        location.href = resultPath(result?.resultCode, session.reference);
       },
       onError(error) {
         console.error("Drop-in error", error);
-        setStatus("error", "The card form could not be shown.");
+        location.href = resultPath("Error", session.reference);
       },
     });
     return new Dropin(checkoutUi, {
       paymentMethodsConfiguration: {
         card: {
+          showBrandIcon: true,
           hasHolderName: true,
           holderNameRequired: true,
           amount: session.amount,
+          placeholders: {
+            cardNumber: "1234 5678 9012 3456",
+            expiryDate: "MM/YY",
+            securityCodeThreeDigits: "123",
+            securityCodeFourDigits: "1234",
+            holderName: "J. Smith",
+          },
         },
       },
     }).mount(element);

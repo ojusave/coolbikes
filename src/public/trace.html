@@ -4,6 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Operations · CoolBikesCo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
       color-scheme: light;
@@ -19,7 +22,7 @@
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: "Iowan Old Style", Palatino, Georgia, serif;
+      font-family: "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
       background: var(--paper);
       color: var(--ink);
       line-height: 1.45;
@@ -76,7 +79,7 @@
   <main>
     <p class="tools"><a href="/">Shop</a></p>
     <h1>Operations</h1>
-    <p class="lede">What the server did for each payment. The shop itself stays a shop.</p>
+    <p class="lede">Live OpenTelemetry spans for each payment. The shop itself stays a shop.</p>
     <p id="empty">No payments yet. Pay for a bike in the shop, and the steps will show up here.</p>
     <div id="traces"></div>
     <p id="live" role="status"></p>
