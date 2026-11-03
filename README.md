@@ -32,4 +32,4 @@ A redirect payment, such as iDEAL, returns through `/handleShopperRedirect`.
 | Payments | `createSession`, `refund`, `submitRedirect`, `verifyWebhook` | Adyen, or the stand-in |
 | Ledger | `record`, `list`, `getByReference` | memory |
 
-Prices are minor units. `89900` is €899.00.
+Prices are minor units. `89900` is $899.00. Live payment steps are at `/traces`.

@@ -20,7 +20,7 @@ function money(amount) {
   if (!amount || typeof amount.value !== "number") return "";
   return new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: amount.currency || "EUR",
+    currency: amount.currency || "USD",
   }).format(amount.value / 100);
 }
 

@@ -7,10 +7,10 @@ import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { catalogPort, ledgerPort, paymentsPort, plug } from "./ports.js";
-import { annotate, runTrace, span } from "./trace.js";
+import { annotate, listTraces, runTrace, span, subscribe } from "./trace.js";
 
 const publicDir = join(dirname(fileURLToPath(import.meta.url)), "public");
-const defaultShop = { countryCode: "NL", locale: "en-US", currency: "EUR" };
+const defaultShop = { countryCode: "NL", locale: "en-US", currency: "USD" };
 
 export function createServer({ catalog, payments, ledger, shop = defaultShop }) {
   const products = plug("catalog", catalogPort, catalog);
@@ -46,12 +46,36 @@ async function route(request, response, products, checkout, books, shop) {
     return;
   }
 
+  // Separate from checkout. The browser keeps this open and spans arrive as they happen.
+  if (request.method === "GET" && url.pathname === "/traces") {
+    await sendFile(response, "traces.html", "text/html; charset=utf-8");
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/traces/stream") {
+    response.writeHead(200, {
+      "content-type": "text/event-stream",
+      "cache-control": "no-store",
+      connection: "keep-alive",
+    });
+    const write = (message) => response.write(`data: ${message}\n\n`);
+    write(JSON.stringify({ type: "snapshot", traces: listTraces() }));
+    const unsubscribe = subscribe(write);
+    const beat = setInterval(() => response.write(": keepalive\n\n"), 15000);
+    request.on("close", () => {
+      clearInterval(beat);
+      unsubscribe();
+    });
+    return;
+  }
+
   const staticFile = {
     "/shop.css": ["shop.css", "text/css; charset=utf-8"],
     "/app.js": ["app.js", "text/javascript; charset=utf-8"],
     "/checkout.js": ["checkout.js", "text/javascript; charset=utf-8"],
     "/checkout-adyen.js": ["checkout-adyen.js", "text/javascript; charset=utf-8"],
     "/result.js": ["result.js", "text/javascript; charset=utf-8"],
+    "/traces.js": ["traces.js", "text/javascript; charset=utf-8"],
   }[url.pathname];
   if (request.method === "GET" && staticFile) {
     await sendFile(response, staticFile[0], staticFile[1]);

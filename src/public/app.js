@@ -6,7 +6,7 @@ const list = document.querySelector("#products");
 function formatPrice(price) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: price.currency || "EUR",
+    currency: price.currency || "USD",
   }).format(price.value / 100);
 }
 
