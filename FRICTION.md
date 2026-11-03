@@ -60,6 +60,6 @@ Generate and Save are two steps. The page treats the first one as the result. Le
 
 The first merchant code tried, `NAAccount827_CycleTest_TEST`, authenticated and then returned no payment methods. Checkout only showed methods after switching to `NAAccount827ECOM`. The company name, the web-service user, and the merchant account are three different strings, and an empty method list does not say which one is wrong.
 
-## 9. iDEAL test flow lands on Adyen's moneyapp simulator
+## 6. iDEAL test flow lands on Adyen's moneyapp simulator
 
 After selecting iDEAL and submitting, the shopper is redirected to Adyen's test issuer page (moneyapp) showing amount, IBAN, receiver, and "Authorize payment / Cancel payment" buttons. The button did not respond to clicks in the embedded checkout; unclear whether this is Adyen's simulator or our redirect/iframe setup. Need to retest in a top-level tab and check console errors.
