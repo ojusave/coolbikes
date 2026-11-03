@@ -49,4 +49,5 @@ jobs:
           git add docs/screenshots/catalog.png docs/screenshots/checkout.png
           if git diff --cached --quiet; then exit 0; fi
           git commit -m "Capture catalog and unconfigured checkout for README"
+          git pull --rebase origin main
           git push
