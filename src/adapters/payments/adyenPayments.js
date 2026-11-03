@@ -4,13 +4,11 @@
 // A refund is a later call, after the payment has a pspReference.
 // Adyen answers "received". The refund is finished when a webhook arrives.
 
-import {
-  CheckoutAPI,
-  Client,
-  Config,
-  EnvironmentEnum,
-  hmacValidator,
-} from "@adyen/api-library";
+import adyen from "@adyen/api-library";
+
+// The SDK is CommonJS. Import its exports object so Node does not need to
+// infer named exports when loading this ES module.
+const { CheckoutAPI, Client, Config, EnvironmentEnum, hmacValidator } = adyen;
 import { annotate, exchange, originalRequest, span } from "../../trace.js";
 
 export function adyenPayments(env = process.env) {
