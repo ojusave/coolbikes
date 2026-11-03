@@ -4,65 +4,72 @@ const tracesRoot = document.querySelector("#traces");
 const empty = document.querySelector("#empty");
 const live = document.querySelector("#live");
 const traces = new Map();
+const openKeys = new Set();
 
 function clock(iso) {
   return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-function money(amount) {
-  if (!amount || typeof amount.value !== "number") return null;
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: amount.currency || "USD" }).format(amount.value / 100);
+function pretty(value) {
+  if (typeof value === "string") return value;
+  return JSON.stringify(value, null, 2);
 }
 
-function fieldText(span, traceId, ancestors) {
-  const skip = new Set(["operation", "at", "outcome", "durationMs", "depth"]);
-  const parts = [];
-  for (const [key, value] of Object.entries(span)) {
-    if (skip.has(key) || value == null || value === "") continue;
-    if (key === "reference" && value === traceId) continue;
-    if (ancestors.some((parent) => JSON.stringify(parent[key]) === JSON.stringify(value))) continue;
-    if (key === "amount") {
-      const formatted = money(value);
-      if (formatted) parts.push(formatted);
-      continue;
-    }
-    parts.push(`${key} ${typeof value === "object" ? JSON.stringify(value) : value}`);
-  }
-  return parts.join(" · ");
+function statusText(span) {
+  if (!span.outcome || span.outcome === "running") return "running";
+  if (span.httpStatus) return `${span.httpStatus} · ${span.durationMs}ms`;
+  return `${span.outcome} · ${span.durationMs}ms`;
 }
 
-function renderSpan(span, window, traceId, ancestors) {
-  const item = document.createElement("li");
+function bodyBlock(label, value) {
+  const block = document.createElement("div");
+  const title = document.createElement("p");
+  title.className = "body-label";
+  title.textContent = label;
+  const code = document.createElement("pre");
+  code.textContent = pretty(value);
+  block.append(title, code);
+  return block;
+}
+
+function renderBodies(span) {
+  const wrap = document.createElement("div");
+  wrap.className = "bodies";
+  if (span.request !== undefined) wrap.append(bodyBlock("Request", span.request));
+  if (span.response !== undefined) wrap.append(bodyBlock("Response", span.response));
+  else if (span.error) wrap.append(bodyBlock("Response", span.error));
+  return wrap;
+}
+
+function renderSpan(span, traceId) {
   const outcome = span.outcome || "running";
+  const expandable = span.request !== undefined || span.response !== undefined || Boolean(span.error);
+  const item = document.createElement("li");
   item.dataset.outcome = outcome;
-  item.style.setProperty("--depth", String(span.depth || 1));
-  const row = document.createElement("div");
+  const row = document.createElement(expandable ? "summary" : "div");
   row.className = "row";
   const name = document.createElement("span");
   name.className = "op";
   name.textContent = span.operation;
   const meta = document.createElement("span");
   meta.className = "meta";
-  meta.textContent = outcome === "running" ? "running" : `${outcome} · ${span.durationMs}ms`;
+  meta.textContent = statusText(span);
   row.append(name, meta);
-  const track = document.createElement("div");
-  track.className = "track";
-  const bar = document.createElement("div");
-  bar.className = "bar";
-  const start = new Date(span.at).getTime();
-  const left = window.ms <= 0 ? 0 : ((start - window.start) / window.ms) * 100;
-  const width = window.ms <= 0 ? 8 : Math.max(1.5, ((span.durationMs || window.ms * 0.08) / window.ms) * 100);
-  bar.style.left = `${Math.min(98, Math.max(0, left))}%`;
-  bar.style.width = `${Math.min(100 - left, width)}%`;
-  track.append(bar);
-  item.append(row, track);
-  const fields = fieldText(span, traceId, ancestors);
-  if (fields) {
-    const detail = document.createElement("p");
-    detail.className = "fields";
-    detail.textContent = fields;
-    item.append(detail);
+  if (!expandable) {
+    item.append(row);
+    return item;
   }
+  const key = `${traceId}:${span.operation}:${span.at}`;
+  const details = document.createElement("details");
+  details.className = "call";
+  details.dataset.key = key;
+  details.open = openKeys.has(key);
+  details.addEventListener("toggle", () => {
+    if (details.open) openKeys.add(key);
+    else openKeys.delete(key);
+  });
+  details.append(row, renderBodies(span));
+  item.append(details);
   return item;
 }
 
@@ -76,37 +83,47 @@ function renderTrace(trace) {
   when.textContent = clock(trace.at);
   section.append(heading, when);
   if (trace.spans.length === 0) return section;
-  const starts = trace.spans.map((span) => new Date(span.at).getTime());
-  const ends = trace.spans.map((span, index) => starts[index] + (span.durationMs || 0));
-  const window = { start: Math.min(...starts), ms: Math.max(1, Math.max(...ends) - Math.min(...starts)) };
   const list = document.createElement("ol");
-  const ancestors = [];
-  for (const span of trace.spans) {
-    while (ancestors.length > 0 && ancestors[ancestors.length - 1].depth >= span.depth) ancestors.pop();
-    list.append(renderSpan(span, window, trace.id, [...ancestors]));
-    ancestors.push(span);
-  }
+  for (const span of trace.spans) list.append(renderSpan(span, trace.id));
   section.append(list);
   return section;
 }
 
+// The server records every step. This view keeps the HTTP calls only.
+function apiTrace(trace) {
+  const spans = trace.spans
+    .filter((span) => /^(GET|POST|PUT|PATCH|DELETE) \//.test(span.operation || ""))
+    .map((span) => ({ ...span, depth: 1 }));
+  return { ...trace, spans };
+}
+
 function paint() {
-  const ordered = [...traces.values()];
+  // Newest payment first, so the call that just started stays in view.
+  const ordered = [...traces.values()]
+    .map(apiTrace)
+    .filter((trace) => trace.spans.length > 0)
+    .sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  const calls = ordered.reduce((count, trace) => count + trace.spans.length, 0);
   empty.hidden = ordered.length > 0;
+  const panel = tracesRoot.closest(".live-panel");
+  const scroll = panel ? panel.scrollTop : 0;
   tracesRoot.replaceChildren(...ordered.map(renderTrace));
-  live.textContent = ordered.length === 1 ? "1 payment, live" : `${ordered.length} payments, live`;
+  if (panel) panel.scrollTop = scroll;
+  live.textContent = calls === 1 ? "1 API call, live" : `${calls} API calls, live`;
 }
 
 function apply(message) {
-  if (message.type === "snapshot") {
-    traces.clear();
-    for (const trace of message.traces ?? []) traces.set(trace.id, trace);
-  }
-  if (message.type === "update" && message.trace) traces.set(message.trace.id, message.trace);
+  // Ignore any saved list. Only a call that starts after this page opened belongs here.
+  if (message.type !== "update" || !message.trace) return;
+  traces.set(message.trace.id, message.trace);
   paint();
 }
 
 const source = new EventSource("/api/traces/stream");
+window.coolbikesTracesReady = new Promise((resolve) => {
+  source.onopen = () => resolve();
+  setTimeout(resolve, 1500);
+});
 source.onmessage = (event) => apply(JSON.parse(event.data));
 source.onerror = () => {
   live.textContent = "The live trace stream disconnected.";

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Webhooks · CoolBikesCo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/shop.css">
+  <style>
+    body { background: #f4f0e8; }
+    main { max-width: 880px; margin: 0 auto; padding: 84px 16px 72px; }
+    h1 { font-size: 2rem; margin: 0 0 8px; }
+    .lede, #empty, #live { color: #4a433b; }
+    .hook { background: #fffdf8; border: 1px solid #d9d0c3; border-radius: 12px; padding: 16px; margin: 0 0 14px; }
+    .row { display: flex; justify-content: space-between; gap: 12px; }
+    h2 { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 1rem; margin: 0; }
+    .meta { color: #4a433b; white-space: nowrap; }
+    .hook[data-outcome="rejected"] .meta { color: #8c2f2f; }
+    .when, .fields { margin: 6px 0 0; color: #4a433b; overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+  <header id="header">
+    <div class="header-content">
+      <a class="logo-link" href="/">CoolBikesCo</a>
+    </div>
+  </header>
+  <main>
+    <h1>Webhooks</h1>
+    <p class="lede">Notifications Adyen has sent to this server. A new payment or refund shows up here a few seconds later.</p>
+    <p id="empty">No webhooks yet.</p>
+    <div id="hooks"></div>
+    <p id="live" role="status"></p>
+  </main>
+  <script src="/webhooks.js"></script>
+</body>
+</html>

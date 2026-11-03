@@ -43,7 +43,7 @@ export function listTraces(reference) {
   return traces.filter((item) => item.id === reference || item.spans.some((span) => span.reference === reference)).map(publicTrace);
 }
 
-// Browsers on /traces subscribe here and receive each span as it starts and ends.
+// Shop pages subscribe here and receive each span as it starts and ends.
 export function subscribe(listener) {
   listeners.add(listener);
   return () => listeners.delete(listener);
@@ -82,6 +82,32 @@ export function annotate(fields) {
   for (const [key, value] of Object.entries(attributesFrom(safe(fields)))) {
     active.setAttribute(key, value);
   }
+}
+
+// The request line plus the body that was sent. This is not a rebuilt object.
+export function originalRequest(method, url, rawBody) {
+  const text = rawBody == null ? "" : Buffer.isBuffer(rawBody) ? rawBody.toString("utf8") : String(rawBody);
+  let body = text;
+  if (text) {
+    try {
+      body = JSON.stringify(JSON.parse(text), null, 2);
+    } catch {
+      body = text;
+    }
+  }
+  return body ? `${method} ${url}\n\n${body}` : `${method} ${url}`;
+}
+
+// Keeps the HTTP body on the call that is running now.
+// A secret field is removed. A token such as sessionResult is shown as "…".
+export function exchange(parts) {
+  const active = otel.getActiveSpan();
+  if (!active) return;
+  const record = spanIndex.get(active.spanContext().spanId);
+  if (!record) return;
+  if (parts.request !== undefined) record.request = redact(plain(parts.request));
+  if (parts.response !== undefined) record.response = redact(plain(parts.response));
+  publish(record.traceId);
 }
 
 function remember(span, phase) {
@@ -178,6 +204,31 @@ function fieldsFrom(attributes) {
     fields[key] = value;
   }
   return fields;
+}
+
+const hideValue = /redirectresult|sessionresult/i;
+
+function plain(value) {
+  if (value == null || typeof value !== "object") return value;
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return String(value);
+  }
+}
+
+function redact(value, key = "") {
+  if (hideValue.test(key)) return "…";
+  if (Array.isArray(value)) return value.map((item) => redact(item));
+  if (value && typeof value === "object") {
+    const copy = {};
+    for (const [childKey, child] of Object.entries(value)) {
+      if (secretKey.test(childKey)) continue;
+      copy[childKey] = redact(child, childKey);
+    }
+    return copy;
+  }
+  return value;
 }
 
 function safe(fields) {

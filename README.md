@@ -24,7 +24,7 @@ A redirect payment, such as iDEAL, returns through `/handleShopperRedirect`.
 
 ## Plugs
 
-`src/index.js` is the only file that chooses the plugs.
+`src/index.js` is the only file that chooses the plugs. Each JSON route is a file in `src/api`.
 
 | Port | Jobs | Plug |
 | --- | --- | --- |
@@ -32,4 +32,4 @@ A redirect payment, such as iDEAL, returns through `/handleShopperRedirect`.
 | Payments | `createSession`, `refund`, `submitRedirect`, `verifyWebhook` | Adyen, or the stand-in |
 | Ledger | `record`, `list`, `getByReference` | memory |
 
-Prices are minor units. `89900` is $899.00. Live payment steps are at `/traces`.
+Prices are minor units. `89900` is €899.00. Live API calls stay on the shop, checkout, and result pages. Open a call to read its request and response. `/traces` is the same stream on its own page.

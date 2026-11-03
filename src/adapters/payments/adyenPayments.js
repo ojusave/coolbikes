@@ -11,7 +11,7 @@ import {
   EnvironmentEnum,
   hmacValidator,
 } from "@adyen/api-library";
-import { annotate, span } from "../../trace.js";
+import { annotate, exchange, originalRequest, span } from "../../trace.js";
 
 export function adyenPayments(env = process.env) {
   const apiKey = required(env, "ADYEN_API_KEY");
@@ -28,7 +28,16 @@ export function adyenPayments(env = process.env) {
   config.environment = environment;
   config.applicationName = "CoolBikesCo case study";
 
-  const checkout = new CheckoutAPI(new Client(config));
+  const client = new Client(config);
+  // Record the request Adyen actually receives: method, URL, and body.
+  const http = client.httpClient;
+  const send = http.request.bind(http);
+  http.request = (endpoint, json, requestConfig, isApiRequired, requestOptions = {}) => {
+    const method = requestOptions.method || "POST";
+    exchange({ request: originalRequest(method, endpoint, json) });
+    return send(endpoint, json, requestConfig, isApiRequired, requestOptions);
+  };
+  const checkout = new CheckoutAPI(client);
   const validator = new hmacValidator();
 
   return {
@@ -39,27 +48,22 @@ export function adyenPayments(env = process.env) {
         error.statusCode = 400;
         throw error;
       }
+      const payload = {
+        merchantAccount,
+        amount: request.amount,
+        reference: request.reference,
+        returnUrl: request.returnUrl,
+        countryCode: request.countryCode,
+        channel: request.channel ?? "Web",
+        shopperLocale: request.shopperLocale ?? "en-NL",
+      };
       const response = await span(
         "POST /v72/sessions",
-        {
-          auth: "X-API-Key",
-          merchantAccount,
-          amount: request.amount,
-          reference: request.reference,
-          countryCode: request.countryCode,
-          channel: request.channel ?? "Web",
-        },
+        { auth: "X-API-Key", merchantAccount, reference: request.reference },
         async () => {
-          const created = await checkout.PaymentsApi.sessions({
-            merchantAccount,
-            amount: request.amount,
-            reference: request.reference,
-            returnUrl: request.returnUrl,
-            countryCode: request.countryCode,
-            channel: request.channel ?? "Web",
-            shopperLocale: request.shopperLocale ?? "en-NL",
-          });
+          const created = await checkout.PaymentsApi.sessions(payload);
           annotate({ httpStatus: 201, sessionId: created.id });
+          exchange({ response: created });
           return created;
         },
       );
@@ -86,11 +90,13 @@ export function adyenPayments(env = process.env) {
         const payment = response.payments?.[0];
         const method = payment?.paymentMethod;
         annotate({
+          httpStatus: 200,
           status: response.status,
           resultCode: payment?.resultCode,
           pspReference: payment?.pspReference,
           reference: response.reference,
         });
+        exchange({ response });
         return {
           provider: "adyen",
           status: response.status,
@@ -105,25 +111,24 @@ export function adyenPayments(env = process.env) {
     async refund(request) {
       // A card payment is often only authorised, not captured yet.
       // /refunds rejects that. /reversals refunds a capture and cancels an authorisation.
+      const payload = {
+        merchantAccount,
+        reference: `refund-${request.reference}`,
+      };
       const response = await span(
         "POST /payments/{psp}/reversals",
-        {
-          paymentPspReference: request.paymentPspReference,
-          reference: request.reference,
-        },
+        { paymentPspReference: request.paymentPspReference, reference: request.reference },
         async () => {
           const refunded = await checkout.ModificationsApi.refundOrCancelPayment(
             request.paymentPspReference,
-            {
-              merchantAccount,
-              reference: `refund-${request.reference}`,
-            },
+            payload,
           );
           annotate({
             httpStatus: 201,
             pspReference: refunded.pspReference,
             result: refunded.status ?? "received",
           });
+          exchange({ response: refunded });
           return refunded;
         },
       );
@@ -138,15 +143,16 @@ export function adyenPayments(env = process.env) {
       };
     },
     async submitRedirect(request) {
+      const payload = { details: { redirectResult: request.redirectResult } };
       const response = await span("POST /v72/payments/details", {}, async () => {
-        const details = await checkout.PaymentsApi.paymentsDetails({
-          details: { redirectResult: request.redirectResult },
-        });
+        const details = await checkout.PaymentsApi.paymentsDetails(payload);
         annotate({
+          httpStatus: 200,
           resultCode: details.resultCode,
           pspReference: details.pspReference,
           merchantReference: details.merchantReference,
         });
+        exchange({ response: details });
         return details;
       });
 

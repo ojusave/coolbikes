@@ -32,7 +32,7 @@ export function shopSettings(env = process.env) {
   return {
     countryCode: env.SHOP_COUNTRY || "NL",
     locale: env.SHOP_LOCALE || "en-US",
-    currency: env.SHOP_CURRENCY || "USD",
+    currency: env.SHOP_CURRENCY || "EUR",
   };
 }
 

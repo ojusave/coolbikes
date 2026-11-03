@@ -9,11 +9,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/shop.css">
 </head>
-<body>
+<body class="with-trace-dock">
   <header id="header">
     <div class="header-content">
       <a class="logo-link" href="/">CoolBikesCo</a>
-      <a class="docs-button" href="/traces">Traces</a>
     </div>
   </header>
   <main class="page">
@@ -42,6 +41,16 @@
       </div>
     </div>
   </main>
+  <aside class="live-panel is-docked" aria-label="API traces">
+    <div class="live-head">
+      <h2 class="live-title">API traces</h2>
+      <p class="live-lede">Open a call to read its request and response.</p>
+      <p id="empty">No API calls yet.</p>
+      <p id="live" role="status"></p>
+    </div>
+    <div id="traces"></div>
+  </aside>
+  <script src="/traces.js"></script>
   <script src="/result.js"></script>
 </body>
 </html>

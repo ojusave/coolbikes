@@ -8,7 +8,7 @@ const statusBox = document.querySelector("#status");
 function formatPrice(price) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: price.currency || "USD",
+    currency: price.currency || "EUR",
   }).format(price.value / 100);
 }
 
@@ -32,6 +32,8 @@ async function start() {
     location.href = "/";
     return;
   }
+  // Wait until the trace stream is open, so this session is seen as it happens.
+  if (window.coolbikesTracesReady) await window.coolbikesTracesReady;
   const listed = await fetch(`/api/products/${encodeURIComponent(productId)}`);
   const listedBody = await listed.json();
   if (!listed.ok) {

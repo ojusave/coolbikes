@@ -20,7 +20,7 @@ function money(amount) {
   if (!amount || typeof amount.value !== "number") return "";
   return new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: amount.currency || "USD",
+    currency: amount.currency || "EUR",
   }).format(amount.value / 100);
 }
 
@@ -115,5 +115,6 @@ showRetry(reference);
 if (kind === "success" && reference) {
   document.querySelector("#invoice").hidden = false;
   document.querySelector("#invoice-note").textContent = "Loading the invoice…";
-  loadInvoice();
+  const ready = window.coolbikesTracesReady ?? Promise.resolve();
+  ready.then(() => loadInvoice());
 }
