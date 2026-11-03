@@ -305,17 +305,21 @@ async function route(request, response, products, checkout, books, shop) {
     const sessionId = url.searchParams.get("sessionId");
     const sessionResult = url.searchParams.get("sessionResult");
     if (sessionId && sessionResult && !order.pspReference && typeof checkout.getSessionResult === "function") {
-      const resolved = await span("payments.getSessionResult", { sessionId, reference }, () =>
-        checkout.getSessionResult({ sessionId, sessionResult }),
-      );
-      order = books.record({
-        reference,
-        status: resolved.resultCode || order.status,
-        pspReference: resolved.pspReference || order.pspReference,
-        paymentMethod: resolved.paymentMethod || order.paymentMethod,
-        amount: resolved.amount || order.amount,
-        sessionId,
-      });
+      try {
+        const resolved = await span("payments.getSessionResult", { sessionId, reference }, () =>
+          checkout.getSessionResult({ sessionId, sessionResult }),
+        );
+        order = books.record({
+          reference,
+          status: resolved.resultCode || order.status,
+          pspReference: resolved.pspReference || order.pspReference,
+          paymentMethod: resolved.paymentMethod || order.paymentMethod,
+          amount: resolved.amount || order.amount,
+          sessionId,
+        });
+      } catch (error) {
+        console.error("Session result lookup failed:", error.message);
+      }
     }
     sendJson(response, 200, { order: invoiceOf(order) });
     return;
@@ -382,9 +386,12 @@ async function route(request, response, products, checkout, books, shop) {
 
       sendJson(response, 201, { refund });
     });
-    } catch {
+    } catch (error) {
+      console.error("Refund failed:", error.message);
       if (!response.headersSent) {
-        sendJson(response, 502, { error: "The refund could not be requested." });
+        const detail = String(error.message || "");
+        const safe = detail && !/api.?key/i.test(detail) ? detail.slice(0, 180) : "The refund could not be requested.";
+        sendJson(response, Number.isInteger(error.statusCode) ? error.statusCode : 502, { error: safe });
       }
     }
     return;

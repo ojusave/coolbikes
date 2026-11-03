@@ -103,20 +103,20 @@ export function adyenPayments(env = process.env) {
       });
     },
     async refund(request) {
+      // A card payment is often only authorised, not captured yet.
+      // /refunds rejects that. /reversals refunds a capture and cancels an authorisation.
       const response = await span(
-        "POST /payments/{psp}/refunds",
+        "POST /payments/{psp}/reversals",
         {
           paymentPspReference: request.paymentPspReference,
-          amount: request.amount,
           reference: request.reference,
         },
         async () => {
-          const refunded = await checkout.ModificationsApi.refundCapturedPayment(
+          const refunded = await checkout.ModificationsApi.refundOrCancelPayment(
             request.paymentPspReference,
             {
               merchantAccount,
-              amount: request.amount,
-              reference: request.reference,
+              reference: `refund-${request.reference}`,
             },
           );
           annotate({
