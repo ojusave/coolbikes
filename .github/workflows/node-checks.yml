@@ -1,0 +1,59 @@
+name: Node 22 checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Verify Adyen adapter construction without network calls
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import { adyenPayments } from './src/adapters/payments/adyenPayments.js';
+          const adapter = adyenPayments({
+            ADYEN_API_KEY: 'offline-test-placeholder',
+            ADYEN_CLIENT_KEY: 'test_offline-placeholder',
+            ADYEN_MERCHANT_ACCOUNT: 'offline-merchant',
+            ADYEN_ENVIRONMENT: 'TEST',
+          });
+          assert.equal(adapter.name, 'adyen');
+          for (const method of ['createSession', 'getSessionResult', 'refund', 'submitRedirect', 'verifyWebhook']) {
+            assert.equal(typeof adapter[method], 'function', method);
+          }
+          JS
+      - run: npm test
+      - name: Verify the documented startup command
+        run: |
+          npm start > /tmp/coolbikes-start.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          let ready = false;
+          for (let attempt = 0; attempt < 30; attempt++) {
+            try {
+              const response = await fetch('http://127.0.0.1:4317/api/products');
+              assert.equal(response.status, 200);
+              const body = await response.json();
+              assert.equal(body.products.length, 3);
+              ready = true;
+              break;
+            } catch {
+              await new Promise(resolve => setTimeout(resolve, 500));
+            }
+          }
+          if (!ready) console.error(readFileSync('/tmp/coolbikes-start.log', 'utf8'));
+          assert.ok(ready, 'npm start must serve the catalog on Node 22');
+          JS
