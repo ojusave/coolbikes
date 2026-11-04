@@ -125,3 +125,64 @@ test("shop to refund works end to end on the fake payments plug", async () => {
     await once(server, "close");
   }
 });
+
+test("webhook details preserve the full raw request and actual response, including failures", async () => {
+  const standIn = fakePayments();
+  const server = createServer({
+    catalog: staticCatalog(),
+    payments: {
+      ...standIn,
+      async verifyWebhook(body) {
+        if (body.reject) {
+          const error = new Error("Invalid signature (internal detail)");
+          error.statusCode = 401;
+          throw error;
+        }
+        return standIn.verifyWebhook(body);
+      },
+    },
+    ledger: memoryLedger(),
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const reference = "raw-webhook-test";
+  const raw = '{\n  "live" : "false",\n  "notificationItems": [ { "NotificationRequestItem": { "eventCode":"AUTHORISATION", "merchantReference":"raw-webhook-test", "success":"true", "pspReference":"raw-psp", "additionalData":{"custom":"<b>literal</b>"} } } ]\n}\n';
+  try {
+    for (const [body, expectedStatus] of [[raw, 200], ['{ "reject": true }\n', 401], ['{ malformed JSON\n', 500]]) {
+      const response = await fetch(`${base}/api/webhooks`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body,
+      });
+      const responseBody = await response.text();
+      assert.equal(response.status, expectedStatus);
+      const { webhooks } = await fetch(`${base}/api/webhooks`).then((r) => r.json());
+      const recorded = webhooks[0];
+      assert.equal(recorded.request.body, body);
+      assert.equal(recorded.request.method, "POST");
+      assert.equal(recorded.request.url, "/api/webhooks");
+      assert.equal(recorded.response.body, responseBody);
+      assert.equal(recorded.response.statusCode, response.status);
+      assert.equal(recorded.response.contentType, response.headers.get("content-type"));
+      assert.equal(recorded.outcome, expectedStatus === 200 ? "accepted" : "rejected");
+      assert.ok(recorded.id);
+      if (expectedStatus === 200) {
+        assert.equal(responseBody, "[accepted]");
+        const trace = listTraces(reference)[0];
+        const call = trace.spans.find((s) => s.operation === "POST /api/webhooks");
+        assert.ok(call.request.endsWith(`\n\n${raw}`));
+        assert.ok(call.response.endsWith(`\n\n${responseBody}`));
+      } else {
+        assert.equal(responseBody.includes("internal detail"), false);
+        const call = listTraces().flatMap((t) => t.spans).find((s) => s.operation === "POST /api/webhooks" && s.request?.endsWith(`\n\n${body}`));
+        assert.equal(call.httpStatus, expectedStatus);
+        assert.equal(call.outcome, "error");
+        assert.ok(call.response.endsWith(`\n\n${responseBody}`));
+      }
+    }
+  } finally {
+    server.close();
+    await once(server, "close");
+  }
+});

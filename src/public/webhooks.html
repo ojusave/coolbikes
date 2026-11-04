@@ -18,6 +18,11 @@
     h2 { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 1rem; margin: 0; }
     .meta { color: #4a433b; white-space: nowrap; }
     .hook[data-outcome="rejected"] .meta { color: #8c2f2f; }
+    details { margin-top: 14px; }
+    summary { cursor: pointer; font-weight: 600; }
+    h3 { font-size: .85rem; margin: 16px 0 6px; }
+    pre { margin: 0; padding: 12px; background: #f4f0e8; border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; font: .8rem/1.5 ui-monospace, Menlo, Consolas, monospace; }
+    @media (max-width: 600px) { .row { flex-wrap: wrap; } }
     .when, .fields { margin: 6px 0 0; color: #4a433b; overflow-wrap: anywhere; }
   </style>
 </head>
@@ -29,7 +34,7 @@
   </header>
   <main>
     <h1>Webhooks</h1>
-    <p class="lede">Notifications Adyen has sent to this server. A new payment or refund shows up here a few seconds later.</p>
+    <p class="lede">Notifications received by this server, newest first. Open a notification to inspect its raw request and our response.</p>
     <p id="empty">No webhooks yet.</p>
     <div id="hooks"></div>
     <p id="live" role="status"></p>
